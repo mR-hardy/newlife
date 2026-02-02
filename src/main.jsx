@@ -2,6 +2,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
+// 這裡直接引入圖標庫，解決語法錯誤
+import { 
+  Fingerprint, LayoutDashboard, Utensils, Dumbbell, Wallet, Mic, 
+  Plus, X, Settings, Camera, Activity, Loader2, Trash2, 
+  Calendar, ChevronLeft, ChevronRight, ScanLine, Check,
+  Bus, ShoppingBag, Coffee, Gamepad2, MoreHorizontal
+} from 'lucide-react';
 
 // ==========================================
 // ⚠️ 設定區：請填入你的 Google Script URL
@@ -9,65 +16,18 @@ import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzd7jbWacz3z8oM22VWCP_RgtuvgGF-eSTsG_ZC3FG_jRloxWXiDnsZeNK4I8RmaW9w/exec"; 
 
 
-// ==========================================
-// 0. Icons (內建 SVG，確保不依賴外部庫導致崩潰)
-// ==========================================
-const Icon = ({ name, size = 24, className = "", onClick }) => {
-  const icons = {
-    Fingerprint: <path d="M2 12C2 6.48 6.48 2 12 2s10 4.48 10 10v.5c0 1.38-1.12 2.5-2.5 2.5S17 13.88 17 12.5V12c0-2.76-2.24-5-5-5s-5 2.24-5 5v2.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5v-3" />,
-    LayoutDashboard: <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>,
-    Utensils: <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>,
-    Dumbbell: <path d="m6.5 6.5 11 11"/><path d="m21 21-1-1"/><path d="m3 3 1 1"/><path d="m18 22 4-4"/><path d="m2 6 4-4"/><path d="m3 10 7-7"/><path d="m14 21 7-7"/>,
-    Wallet: <path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5"/><path d="M16 12h6"/><path d="M22 12v5"/><path d="M22 12v-5"/>,
-    Mic: <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>,
-    Plus: <path d="M12 5v14"/><path d="M5 12h14"/>,
-    X: <path d="M18 6 6 18"/><path d="M6 6l12 12"/>,
-    Settings: <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>,
-    Camera: <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3"/>,
-    Activity: <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>,
-    Loader2: <path d="M21 12a9 9 0 1 1-6.219-8.56"/>,
-    Trash2: <path d="M3 6h18"/><path d="M19 6v14c0 1.1-.9 2-2 2H7c-1.1 0-2-.9-2-2V6"/><path d="M8 6V4c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>,
-    Calendar: <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>,
-    Clock: <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>,
-    MapPin: <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>,
-    Flame: <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.6-3.3.31.58.6 1.15.9 1.8z"/>,
-    Droplet: <path d="M12 2.69l5.74 5.74a8 8 0 1 1-11.31 0z"/>,
-    ArrowRight: <path d="M5 12h14M12 5l7 7-7 7" />,
-    ChevronLeft: <path d="M15 18l-6-6 6-6" />,
-    ChevronRight: <path d="M9 18l6-6-6-6" />,
-    ScanLine: <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10" />,
-  };
-  return (
-    <svg onClick={onClick} xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      {icons[name] || <circle cx="12" cy="12" r="10" />}
-    </svg>
-  );
-};
-
-// ==========================================
-// 1. API Service
-// ==========================================
+// --- API Service ---
 const api = {
   fetchAll: async (userId) => {
     if (!GOOGLE_SCRIPT_URL.startsWith("http")) return null;
     try {
       const response = await fetch(`${GOOGLE_SCRIPT_URL}?action=getAllData&userId=${userId}`);
       const json = await response.json();
-      return json.status === 'success' ? {
-        diet: Array.isArray(json.data.diet) ? json.data.diet : [],
-        workout: Array.isArray(json.data.workout) ? json.data.workout : [],
-        finance: Array.isArray(json.data.finance) ? json.data.finance : [],
-        settings: json.data.settings || {}
-      } : null;
+      return json.status === 'success' ? json.data : null;
     } catch (e) { console.error(e); return null; }
   },
   post: async (action, sheet, data, userId) => {
     if (!GOOGLE_SCRIPT_URL.startsWith("http")) return;
-    // 確保日期格式
-    if (data.date) {
-      const d = new Date(data.date);
-      data.date = `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
-    }
     try { fetch(GOOGLE_SCRIPT_URL, { method: "POST", body: JSON.stringify({ action, sheet, data, userId }) }); } catch (e) {}
   },
   analyze: async (base64Image, type) => {
@@ -80,14 +40,20 @@ const api = {
   }
 };
 
-// Helper: 格式化日期
-const formatDate = (dateObj) => {
-  return `${dateObj.getFullYear()}/${dateObj.getMonth()+1}/${dateObj.getDate()}`;
+// --- Icon Helper (修復錯誤的關鍵) ---
+// 建立一個對照表，將字串名稱對應到真正的組件
+const IconMap = {
+  Fingerprint, LayoutDashboard, Utensils, Dumbbell, Wallet, Mic, Plus, X, Settings, 
+  Camera, Activity, Loader2, Trash2, Calendar, ChevronLeft, ChevronRight, ScanLine, 
+  Check, Bus, ShoppingBag, Coffee, Gamepad2, MoreHorizontal
 };
 
-// ==========================================
-// 2. Components
-// ==========================================
+const Icon = ({ name, size = 24, className, onClick }) => {
+  const LucideIcon = IconMap[name] || LayoutDashboard; // 預設圖標
+  return <LucideIcon size={size} className={className} onClick={onClick} />;
+};
+
+// --- Components ---
 
 const DateScroller = ({ date, setDate }) => {
   const dates = useMemo(() => {
@@ -102,7 +68,7 @@ const DateScroller = ({ date, setDate }) => {
 
   return (
     <div className="pt-4 pb-2 px-4 bg-dark-bg z-10">
-      <div className="flex gap-3 overflow-x-auto" style={{scrollbarWidth:'none'}}>
+      <div className="flex gap-3 overflow-x-auto no-scrollbar py-2" style={{scrollbarWidth:'none'}}>
         {dates.map((d, i) => {
           const isSelected = d.toDateString() === date.toDateString();
           const isToday = d.toDateString() === new Date().toDateString();
@@ -123,8 +89,8 @@ const DateScroller = ({ date, setDate }) => {
   );
 };
 
-const TimelineCard = ({ icon, color, title, subtitle, value, time }) => (
-  <div className="flex gap-4 relative group active:scale-95 transition-transform cursor-pointer">
+const TimelineCard = ({ icon, color, title, subtitle, value, time, onClick }) => (
+  <div onClick={onClick} className="flex gap-4 relative group active:scale-95 transition-transform cursor-pointer">
     <div className="absolute left-[19px] top-10 bottom-[-20px] w-0.5 bg-dark-border z-0 group-last:hidden"></div>
     <div className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center border-4 border-dark-bg ${color} text-white shadow-lg`}>
       <Icon name={icon} size={18} />
@@ -169,29 +135,54 @@ const BottomSheet = ({ isOpen, onClose, title, children }) => (
 const ExpenseModal = ({ isOpen, onClose, onSave, date }) => {
   const [amt, setAmt] = useState('');
   const [note, setNote] = useState('');
+  const [cat, setCat] = useState('food');
+  
+  const categories = [
+      {id:'food', icon:'Utensils', label:'餐飲'},
+      {id:'transport', icon:'Bus', label:'交通'},
+      {id:'shopping', icon:'ShoppingBag', label:'購物'},
+      {id:'ent', icon:'Gamepad2', label:'娛樂'},
+      {id:'drink', icon:'Coffee', label:'飲料'},
+      {id:'other', icon:'MoreHorizontal', label:'其他'}
+  ];
+
   const num = (n) => { if(amt.length<7) setAmt(amt+n); };
-  useEffect(() => { if(!isOpen) { setAmt(''); setNote(''); } }, [isOpen]);
+  
+  // Reset state when opened
+  useEffect(() => { if(!isOpen) { setAmt(''); setNote(''); setCat('food'); } }, [isOpen]);
+
   return (
     <BottomSheet isOpen={isOpen} onClose={onClose} title="記一筆">
       <div className="flex flex-col items-center mb-6">
         <div className="text-5xl font-bold text-white flex items-baseline mb-4"><span className="text-2xl text-dark-sub mr-1">$</span>{amt||'0'}</div>
-        <input placeholder="輸入備註..." value={note} onChange={e=>setNote(e.target.value)} className="dark-input text-center font-bold"/>
+        <input placeholder="輸入備註..." value={note} onChange={e=>setNote(e.target.value)} className="dark-input text-center font-bold bg-dark-bg border-none"/>
       </div>
+      
+      <div className="flex gap-3 overflow-x-auto no-scrollbar pb-4 mb-2" style={{scrollbarWidth:'none'}}>
+          {categories.map(c => (
+              <button key={c.id} onClick={()=>setCat(c.id)} className={`flex flex-col items-center justify-center p-3 rounded-2xl min-w-[70px] transition ${cat===c.id?'bg-accent-blue text-white':'bg-dark-bg text-dark-sub'}`}>
+                  <Icon name={c.icon} size={20}/>
+                  <span className="text-xs mt-1 font-bold">{c.label}</span>
+              </button>
+          ))}
+      </div>
+
       <div className="grid grid-cols-3 gap-3 mb-4">
         {[1,2,3,4,5,6,7,8,9,'.',0].map(n=><button key={n} onClick={()=>num(n)} className="py-4 bg-dark-bg rounded-2xl text-xl font-bold text-white active:bg-dark-border transition">{n}</button>)}
         <button onClick={()=>setAmt(amt.slice(0,-1))} className="py-4 bg-accent-red/20 text-accent-red rounded-2xl flex justify-center items-center active:bg-accent-red/30"><Icon name="Trash2"/></button>
       </div>
-      <button onClick={()=>{if(amt) onSave({amount:parseInt(amt),note:note||'消費',categoryId:'gen',date:date, time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-white text-black rounded-2xl font-bold text-lg active:scale-95 transition">確認</button>
+      <button onClick={()=>{if(amt) onSave({amount:parseInt(amt),note:note||categories.find(c=>c.id===cat).label,categoryId:cat,date:date.toLocaleDateString(), time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-white text-black rounded-2xl font-bold text-lg active:scale-95 transition">確認</button>
     </BottomSheet>
   );
 };
 
 const DietModal = ({ isOpen, onClose, onSave, date }) => {
   const [mode, setMode] = useState('text');
-  const [data, setData] = useState({ name: '', calories: '', protein: '' });
+  const [data, setData] = useState({ name: '', calories: '', protein: '', carbs: '', fat: '' });
   const [loading, setLoading] = useState(false);
-  useEffect(() => { if(!isOpen) { setMode('text'); setData({ name: '', calories: '', protein: '' }); } }, [isOpen]);
   
+  useEffect(() => { if(!isOpen) { setMode('text'); setData({ name: '', calories: '', protein: '', carbs: '', fat: '' }); } }, [isOpen]);
+
   const handleFile = (e) => {
     const f = e.target.files[0]; if(!f) return;
     setLoading(true);
@@ -223,7 +214,7 @@ const DietModal = ({ isOpen, onClose, onSave, date }) => {
                 <input type="number" placeholder="熱量 (kcal)" value={data.calories} onChange={e=>setData({...data,calories:e.target.value})} className="dark-input"/>
                 <input type="number" placeholder="蛋白質 (g)" value={data.protein} onChange={e=>setData({...data,protein:e.target.value})} className="dark-input"/>
               </div>
-              <button onClick={()=>{onSave({...data, date:date, time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-accent-orange text-white rounded-2xl font-bold mt-2">儲存</button>
+              <button onClick={()=>{onSave({...data, date:date.toLocaleDateString(), time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-accent-orange text-white rounded-2xl font-bold mt-2">儲存</button>
             </div>
           )}
         </div>
@@ -234,7 +225,7 @@ const DietModal = ({ isOpen, onClose, onSave, date }) => {
             <div className="flex-1 bg-dark-bg p-3 rounded-2xl text-center"><div className="text-xs text-dark-sub font-bold">熱量</div><div className="text-xl font-bold text-accent-orange">{data.calories}</div></div>
             <div className="flex-1 bg-dark-bg p-3 rounded-2xl text-center"><div className="text-xs text-dark-sub font-bold">蛋白質</div><div className="text-xl font-bold text-accent-blue">{data.protein}g</div></div>
           </div>
-          <button onClick={()=>{onSave({...data, date:date, time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-white text-black rounded-2xl font-bold">確認儲存</button>
+          <button onClick={()=>{onSave({...data, date:date.toLocaleDateString(), time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-white text-black rounded-2xl font-bold">確認儲存</button>
         </div>
       )}
     </BottomSheet>
@@ -252,7 +243,7 @@ const WorkoutModal = ({ isOpen, onClose, onSave, date }) => {
           <input type="number" placeholder="時長 (分)" value={data.duration} onChange={e=>setData({...data,duration:Number(e.target.value)})} className="dark-input"/>
           <input type="number" placeholder="消耗 (kcal)" value={data.calories} onChange={e=>setData({...data,calories:Number(e.target.value)})} className="dark-input"/>
         </div>
-        <button onClick={()=>{onSave({...data, date:date, time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-accent-blue text-white rounded-2xl font-bold mt-4">儲存紀錄</button>
+        <button onClick={()=>{onSave({...data, date:date.toLocaleDateString(), time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-accent-blue text-white rounded-2xl font-bold mt-4">儲存紀錄</button>
       </div>
     </BottomSheet>
   );
@@ -262,7 +253,9 @@ const InBodyModal = ({ isOpen, onClose, onSaveProfile }) => {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState({ weight: 70, bodyFat: 20 });
   const [result, setResult] = useState(null);
+  
   useEffect(() => { if(!isOpen) { setResult(null); setLoading(false); } }, [isOpen]);
+
   const handleFile = (e) => {
     const f = e.target.files[0]; if(!f) return;
     setLoading(true);
@@ -275,6 +268,7 @@ const InBodyModal = ({ isOpen, onClose, onSaveProfile }) => {
     };
     r.readAsDataURL(f);
   };
+
   return (
     <BottomSheet isOpen={isOpen} onClose={onClose} title="InBody 分析">
       {!result ? (
@@ -295,7 +289,7 @@ const InBodyModal = ({ isOpen, onClose, onSaveProfile }) => {
   );
 };
 
-// --- Main App ---
+// --- App ---
 const App = () => {
   const [userId, setUserId] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
@@ -316,7 +310,7 @@ const App = () => {
     api.post('add', type, item, userId);
   };
 
-  const dateStr = formatDate(date);
+  const dateStr = date.toLocaleDateString();
   const todayData = {
     finance: data.finance.filter(i => i.date === dateStr),
     diet: data.diet.filter(i => i.date === dateStr),
@@ -353,88 +347,66 @@ const App = () => {
       <DateScroller date={date} setDate={setDate} />
       
       <main className="px-6 pt-4 space-y-6">
-        {activeTab === 'home' && (
-          <>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-dark-card border border-dark-border p-4 rounded-2xl">
-                <div className="text-xs text-dark-sub font-bold mb-1">熱量攝取</div>
-                <div className="text-2xl font-bold text-white">{todayData.diet.reduce((a,c)=>a+(Number(c.calories)||0),0)} <span className="text-xs text-dark-sub">/ {settings.dailyCalories}</span></div>
-                <div className="h-1 bg-dark-bg mt-2 rounded-full overflow-hidden"><div className="h-full bg-accent-orange w-1/2"></div></div>
-              </div>
-              <div className="bg-dark-card border border-dark-border p-4 rounded-2xl">
-                <div className="text-xs text-dark-sub font-bold mb-1">今日花費</div>
-                <div className="text-2xl font-bold text-white">${todayData.finance.reduce((a,c)=>a+(Number(c.amount)||0),0)}</div>
-                <div className="h-1 bg-dark-bg mt-2 rounded-full overflow-hidden"><div className="h-full bg-accent-green w-1/3"></div></div>
-              </div>
-            </div>
-
-            <div className="bg-dark-card border border-dark-border p-4 rounded-2xl">
-              <div className="text-xs text-dark-sub font-bold mb-4 uppercase tracking-wider">本週熱量趨勢</div>
-              <div className="h-32 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={[...Array(7)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-6+i);const s=formatDate(d);return{name:i,v:data.diet.filter(x=>x.date===s).reduce((a,c)=>a+(Number(c.calories)||0),0)}})}>
-                    <Area type="monotone" dataKey="v" stroke="#F59E0B" fill="#F59E0B" fillOpacity={0.1} strokeWidth={2}/>
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-white font-bold text-lg">今日行程</h3>
-                <div className="flex gap-2">
-                  <button onClick={()=>toggle('diet',true)} className="p-2 bg-accent-orange/20 text-accent-orange rounded-xl"><Icon name="Utensils" size={18}/></button>
-                  <button onClick={()=>toggle('workout',true)} className="p-2 bg-accent-blue/20 text-accent-blue rounded-xl"><Icon name="Dumbbell" size={18}/></button>
-                  <button onClick={()=>toggle('expense',true)} className="p-2 bg-accent-green/20 text-accent-green rounded-xl"><Icon name="Wallet" size={18}/></button>
-                </div>
-              </div>
-
-              <div className="pb-8">
-                {timelineItems.length === 0 ? (
-                  <div className="text-center py-12 text-dark-sub border-2 border-dashed border-dark-card rounded-3xl">
-                    <Icon name="LayoutDashboard" size={40} className="mx-auto mb-2 opacity-20"/>
-                    <p>今天還沒有紀錄</p>
-                  </div>
-                ) : (
-                  timelineItems.map((item, i) => (
-                    <TimelineCard 
-                      key={i}
-                      icon={item.icon}
-                      color={item.color}
-                      title={item.name || item.title || item.note}
-                      time={item.time || '剛剛'}
-                      subtitle={item.type === 'finance' ? '支出' : item.type === 'diet' ? '攝取' : '消耗'}
-                      value={item.amount ? `-$${item.amount}` : item.calories ? `${item.calories} kcal` : ''}
-                    />
-                  ))
-                )}
-              </div>
-            </div>
-            
-            <div onClick={()=>toggle('inbody',true)} className="bg-gradient-to-r from-accent-purple to-indigo-600 p-5 rounded-3xl text-white flex justify-between items-center shadow-lg shadow-accent-purple/20 active:scale-95 transition cursor-pointer">
-              <div><div className="font-bold text-lg">InBody 分析</div><div className="text-xs opacity-80">點擊上傳報告，AI 自動計算</div></div>
-              <Icon name="Activity" size={32} className="opacity-80"/>
-            </div>
-          </>
-        )}
-        {activeTab === 'diet' && (
-          <div className="space-y-4">
-            <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-white">飲食紀錄</h2><button onClick={()=>toggle('diet',true)} className="text-accent-orange font-bold">+ 新增</button></div>
-            {todayData.diet.length===0 ? <div className="text-center text-dark-sub py-10">無紀錄</div> : todayData.diet.map((i,k)=><TimelineCard key={k} icon="Utensils" color="bg-accent-orange" title={i.name} time={i.time} subtitle="攝取" value={`${i.calories} kcal`} />)}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-dark-card border border-dark-border p-4 rounded-2xl">
+            <div className="text-xs text-dark-sub font-bold mb-1">熱量攝取</div>
+            <div className="text-2xl font-bold text-white">{todayData.diet.reduce((a,c)=>a+(Number(c.calories)||0),0)} <span className="text-xs text-dark-sub">/ {settings.dailyCalories}</span></div>
+            <div className="h-1 bg-dark-bg mt-2 rounded-full overflow-hidden"><div className="h-full bg-accent-orange w-1/2"></div></div>
           </div>
-        )}
-        {activeTab === 'workout' && (
-          <div className="space-y-4">
-            <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-white">運動紀錄</h2><button onClick={()=>toggle('workout',true)} className="text-accent-blue font-bold">+ 新增</button></div>
-            {todayData.workout.length===0 ? <div className="text-center text-dark-sub py-10">無紀錄</div> : todayData.workout.map((i,k)=><TimelineCard key={k} icon="Dumbbell" color="bg-accent-blue" title={i.title} time={i.time} subtitle="消耗" value={`${i.calories} kcal`} />)}
+          <div className="bg-dark-card border border-dark-border p-4 rounded-2xl">
+            <div className="text-xs text-dark-sub font-bold mb-1">今日花費</div>
+            <div className="text-2xl font-bold text-white">${todayData.finance.reduce((a,c)=>a+(Number(c.amount)||0),0)}</div>
+            <div className="h-1 bg-dark-bg mt-2 rounded-full overflow-hidden"><div className="h-full bg-accent-green w-1/3"></div></div>
           </div>
-        )}
-        {activeTab === 'finance' && (
-          <div className="space-y-4">
-            <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-white">財務紀錄</h2><button onClick={()=>toggle('expense',true)} className="text-accent-green font-bold">+ 新增</button></div>
-            {todayData.finance.length===0 ? <div className="text-center text-dark-sub py-10">無紀錄</div> : todayData.finance.map((i,k)=><TimelineCard key={k} icon="Wallet" color="bg-accent-green" title={i.note} time={i.time} subtitle="支出" value={`$${i.amount}`} />)}
+        </div>
+
+        <div className="bg-dark-card border border-dark-border p-4 rounded-2xl">
+          <div className="text-xs text-dark-sub font-bold mb-4 uppercase tracking-wider">本週熱量趨勢</div>
+          <div className="h-32 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={[...Array(7)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-6+i);const s=d.toLocaleDateString();return{name:i,v:data.diet.filter(x=>x.date===s).reduce((a,c)=>a+(Number(c.calories)||0),0)}})}>
+                <Area type="monotone" dataKey="v" stroke="#F59E0B" fill="#F59E0B" fillOpacity={0.1} strokeWidth={2}/>
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
-        )}
+        </div>
+
+        <div>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-white font-bold text-lg">今日行程</h3>
+            <div className="flex gap-2">
+              <button onClick={()=>toggle('diet',true)} className="p-2 bg-accent-orange/20 text-accent-orange rounded-xl"><Icon name="Utensils" size={18}/></button>
+              <button onClick={()=>toggle('workout',true)} className="p-2 bg-accent-blue/20 text-accent-blue rounded-xl"><Icon name="Dumbbell" size={18}/></button>
+              <button onClick={()=>toggle('expense',true)} className="p-2 bg-accent-green/20 text-accent-green rounded-xl"><Icon name="Wallet" size={18}/></button>
+            </div>
+          </div>
+
+          <div className="pb-8">
+            {timelineItems.length === 0 ? (
+              <div className="text-center py-12 text-dark-sub border-2 border-dashed border-dark-card rounded-3xl">
+                <Icon name="LayoutDashboard" size={40} className="mx-auto mb-2 opacity-20"/>
+                <p>今天還沒有紀錄</p>
+              </div>
+            ) : (
+              timelineItems.map((item, i) => (
+                <TimelineCard 
+                  key={i}
+                  icon={item.icon}
+                  color={item.color}
+                  title={item.name || item.title || item.note}
+                  time={item.time || '剛剛'}
+                  subtitle={item.type === 'finance' ? '支出' : item.type === 'diet' ? '攝取' : '消耗'}
+                  value={item.amount ? `-$${item.amount}` : item.calories ? `${item.calories} kcal` : ''}
+                />
+              ))
+            )}
+          </div>
+        </div>
+        
+        <div onClick={()=>toggle('inbody',true)} className="bg-gradient-to-r from-accent-purple to-indigo-600 p-5 rounded-3xl text-white flex justify-between items-center shadow-lg shadow-accent-purple/20 active:scale-95 transition cursor-pointer">
+          <div><div className="font-bold text-lg">InBody 分析</div><div className="text-xs opacity-80">點擊上傳報告，AI 自動計算</div></div>
+          <Icon name="Activity" size={32} className="opacity-80"/>
+        </div>
       </main>
 
       <div className="fixed bottom-0 left-0 right-0 glass pb-safe-bottom pt-3 px-6 flex justify-between items-end z-40 max-w-md mx-auto">
