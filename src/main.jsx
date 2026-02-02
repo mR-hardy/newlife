@@ -15,13 +15,16 @@ import {
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzd7jbWacz3z8oM22VWCP_RgtuvgGF-eSTsG_ZC3FG_jRloxWXiDnsZeNK4I8RmaW9w/exec"; 
 
 
-// --- Helper: 強制統一日期格式 YYYY/MM/DD ---
-// 這是解決資料讀取不到的關鍵！
-const formatDate = (dateObj) => {
-  const y = dateObj.getFullYear();
-  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-  const d = String(dateObj.getDate()).padStart(2, '0');
-  return `${y}/${m}/${d}`;
+// --- Helper: 強力日期格式化 (關鍵修正) ---
+// 無論後端傳來什麼怪格式 (ISO, Timestamp, String)，通通轉成 YYYY/MM/DD
+const normalizeDate = (dateInput) => {
+  if (!dateInput) return new Date().toLocaleDateString(); // 防呆
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return dateInput; // 如果轉失敗，回傳原值
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}/${m}/${day}`;
 };
 
 // --- API Service ---
@@ -31,20 +34,28 @@ const api = {
     try {
       const response = await fetch(`${GOOGLE_SCRIPT_URL}?action=getAllData&userId=${userId}`);
       const json = await response.json();
-      return json.status === 'success' ? {
-        diet: Array.isArray(json.data.diet) ? json.data.diet : [],
-        workout: Array.isArray(json.data.workout) ? json.data.workout : [],
-        finance: Array.isArray(json.data.finance) ? json.data.finance : [],
-        settings: json.data.settings || {}
-      } : null;
+      
+      if (json.status === 'success') {
+        // 收到資料後，立刻清洗日期格式
+        const cleanData = (list) => Array.isArray(list) ? list.map(item => ({
+          ...item,
+          date: normalizeDate(item.date) // 這裡進行清洗
+        })) : [];
+
+        return {
+          diet: cleanData(json.data.diet),
+          workout: cleanData(json.data.workout),
+          finance: cleanData(json.data.finance),
+          settings: json.data.settings || {}
+        };
+      }
+      return null;
     } catch (e) { console.error("API Error:", e); return null; }
   },
   post: async (action, sheet, data, userId) => {
     if (!GOOGLE_SCRIPT_URL.startsWith("http")) return;
-    // 寫入前強制格式化日期
-    if (data.date && data.date instanceof Date) {
-        data.date = formatDate(data.date);
-    }
+    // 寫入前也確保格式正確
+    if (data.date) data.date = normalizeDate(data.date);
     try { fetch(GOOGLE_SCRIPT_URL, { method: "POST", body: JSON.stringify({ action, sheet, data, userId }) }); } catch (e) {}
   },
   analyze: async (base64Image, type) => {
@@ -86,8 +97,8 @@ const DateScroller = ({ date, setDate }) => {
     <div className="pt-4 pb-2 px-4 bg-dark-bg z-10">
       <div className="flex gap-3 overflow-x-auto no-scrollbar py-2" style={{scrollbarWidth:'none'}}>
         {dates.map((d, i) => {
-          const isSelected = d.toDateString() === date.toDateString();
-          const isToday = d.toDateString() === new Date().toDateString();
+          const isSelected = normalizeDate(d) === normalizeDate(date);
+          const isToday = normalizeDate(d) === normalizeDate(new Date());
           return (
             <button 
               key={i} 
@@ -186,7 +197,7 @@ const ExpenseModal = ({ isOpen, onClose, onSave, date }) => {
         {[1,2,3,4,5,6,7,8,9,'.',0].map(n=><button key={n} onClick={()=>num(n)} className="py-4 bg-dark-bg rounded-2xl text-xl font-bold text-white active:bg-dark-border transition">{n}</button>)}
         <button onClick={()=>setAmt(amt.slice(0,-1))} className="py-4 bg-accent-red/20 text-accent-red rounded-2xl flex justify-center items-center active:bg-accent-red/30"><Trash2/></button>
       </div>
-      <button onClick={()=>{if(amt) onSave({amount:parseInt(amt),note:note||categories.find(c=>c.id===cat).label,categoryId:cat,date: formatDate(date), time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-white text-black rounded-2xl font-bold text-lg active:scale-95 transition">確認</button>
+      <button onClick={()=>{if(amt) onSave({amount:parseInt(amt),note:note||categories.find(c=>c.id===cat).label,categoryId:cat,date:normalizeDate(date), time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-white text-black rounded-2xl font-bold text-lg active:scale-95 transition">確認</button>
     </BottomSheet>
   );
 };
@@ -229,7 +240,7 @@ const DietModal = ({ isOpen, onClose, onSave, date }) => {
                 <input type="number" placeholder="熱量 (kcal)" value={data.calories} onChange={e=>setData({...data,calories:e.target.value})} className="dark-input"/>
                 <input type="number" placeholder="蛋白質 (g)" value={data.protein} onChange={e=>setData({...data,protein:e.target.value})} className="dark-input"/>
               </div>
-              <button onClick={()=>{onSave({...data, date: formatDate(date), time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-accent-orange text-white rounded-2xl font-bold mt-2">儲存</button>
+              <button onClick={()=>{onSave({...data, date:normalizeDate(date), time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-accent-orange text-white rounded-2xl font-bold mt-2">儲存</button>
             </div>
           )}
         </div>
@@ -240,7 +251,7 @@ const DietModal = ({ isOpen, onClose, onSave, date }) => {
             <div className="flex-1 bg-dark-bg p-3 rounded-2xl text-center"><div className="text-xs text-dark-sub font-bold">熱量</div><div className="text-xl font-bold text-accent-orange">{data.calories}</div></div>
             <div className="flex-1 bg-dark-bg p-3 rounded-2xl text-center"><div className="text-xs text-dark-sub font-bold">蛋白質</div><div className="text-xl font-bold text-accent-blue">{data.protein}g</div></div>
           </div>
-          <button onClick={()=>{onSave({...data, date: formatDate(date), time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-white text-black rounded-2xl font-bold">確認儲存</button>
+          <button onClick={()=>{onSave({...data, date:normalizeDate(date), time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-white text-black rounded-2xl font-bold">確認儲存</button>
         </div>
       )}
     </BottomSheet>
@@ -258,7 +269,7 @@ const WorkoutModal = ({ isOpen, onClose, onSave, date }) => {
           <input type="number" placeholder="時長 (分)" value={data.duration} onChange={e=>setData({...data,duration:Number(e.target.value)})} className="dark-input"/>
           <input type="number" placeholder="消耗 (kcal)" value={data.calories} onChange={e=>setData({...data,calories:Number(e.target.value)})} className="dark-input"/>
         </div>
-        <button onClick={()=>{onSave({...data, date: formatDate(date), time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-accent-blue text-white rounded-2xl font-bold mt-4">儲存紀錄</button>
+        <button onClick={()=>{onSave({...data, date:normalizeDate(date), time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-accent-blue text-white rounded-2xl font-bold mt-4">儲存紀錄</button>
       </div>
     </BottomSheet>
   );
@@ -304,6 +315,7 @@ const InBodyModal = ({ isOpen, onClose, onSaveProfile }) => {
 // --- App ---
 const App = () => {
   const [userId, setUserId] = useState(null);
+  const [loading, setLoading] = useState(false); // 登入載入狀態
   const [activeTab, setActiveTab] = useState('home');
   const [date, setDate] = useState(new Date());
   const [data, setData] = useState({ finance: [], diet: [], workout: [] });
@@ -311,9 +323,21 @@ const App = () => {
   const [modals, setModals] = useState({ expense: false, diet: false, workout: false, inbody: false, settings: false });
   const toggle = (k, v) => setModals(p => ({...p, [k]: v}));
 
-  const handleLogin = (id) => {
+  // 登入邏輯：加入 Loading 狀態，確保資料抓完才顯示主畫面
+  const handleLogin = async (id) => {
+    setLoading(true);
+    const res = await api.fetchAll(id);
+    if(res) {
+        setData({ 
+            finance: res.finance || [], 
+            diet: res.diet || [], 
+            workout: res.workout || [] 
+        });
+        if(res.settings && res.settings.name) setSettings(res.settings);
+        else setSettings(prev => ({ ...prev, name: id }));
+    }
     setUserId(id);
-    api.fetchAll(id).then(res => { if(res) { setData({ finance: res.finance||[], diet: res.diet||[], workout: res.workout||[] }); if(res.settings) setSettings(res.settings); } });
+    setLoading(false);
   };
 
   const addData = (type, item) => {
@@ -322,13 +346,13 @@ const App = () => {
     api.post('add', type, item, userId);
   };
 
-  // 關鍵修正：確保篩選時使用統一的 YYYY/MM/DD 格式
-  const dateStr = formatDate(date);
+  // 統一使用 YYYY/MM/DD 進行篩選
+  const dateStr = normalizeDate(date);
   
   const todayData = {
-    finance: data.finance.filter(i => i.date === dateStr),
-    diet: data.diet.filter(i => i.date === dateStr),
-    workout: data.workout.filter(i => i.date === dateStr)
+    finance: data.finance.filter(i => normalizeDate(i.date) === dateStr),
+    diet: data.diet.filter(i => normalizeDate(i.date) === dateStr),
+    workout: data.workout.filter(i => normalizeDate(i.date) === dateStr)
   };
 
   const timelineItems = [
@@ -345,7 +369,9 @@ const App = () => {
         <p className="text-dark-sub mb-8 text-sm">量化生活，掌握自我</p>
         <form onSubmit={e=>{e.preventDefault(); handleLogin(e.target.elements.uid.value)}}>
           <input name="uid" placeholder="輸入用戶 ID" className="dark-input text-center font-bold mb-4" required />
-          <button className="w-full py-4 bg-white text-black rounded-2xl font-bold active:scale-95 transition">進入系統</button>
+          <button disabled={loading} className="w-full py-4 bg-white text-black rounded-2xl font-bold active:scale-95 transition flex items-center justify-center gap-2">
+            {loading ? <Loader2 className="animate-spin"/> : '進入系統'}
+          </button>
         </form>
       </div>
     </div>
@@ -380,7 +406,7 @@ const App = () => {
               <div className="text-xs text-dark-sub font-bold mb-4 uppercase tracking-wider">本週熱量趨勢</div>
               <div className="h-32 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={[...Array(7)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-6+i);const s=formatDate(d);return{name:i,v:data.diet.filter(x=>x.date===s).reduce((a,c)=>a+(Number(c.calories)||0),0)}})}>
+                  <AreaChart data={[...Array(7)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-6+i);const s=normalizeDate(d);return{name:i,v:data.diet.filter(x=>normalizeDate(x.date)===s).reduce((a,c)=>a+(Number(c.calories)||0),0)}})}>
                     <Area type="monotone" dataKey="v" stroke="#F59E0B" fill="#F59E0B" fillOpacity={0.1} strokeWidth={2}/>
                   </AreaChart>
                 </ResponsiveContainer>
@@ -426,7 +452,6 @@ const App = () => {
           </>
         )}
         
-        {/* 修正：獨立的飲食頁面 */}
         {activeTab === 'diet' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-white">飲食紀錄</h2><button onClick={()=>toggle('diet',true)} className="text-accent-orange font-bold">+ 新增</button></div>
@@ -434,7 +459,6 @@ const App = () => {
           </div>
         )}
         
-        {/* 修正：獨立的運動頁面 */}
         {activeTab === 'workout' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-white">運動紀錄</h2><button onClick={()=>toggle('workout',true)} className="text-accent-blue font-bold">+ 新增</button></div>
@@ -445,7 +469,6 @@ const App = () => {
           </div>
         )}
         
-        {/* 修正：獨立的財務頁面 */}
         {activeTab === 'finance' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-white">財務紀錄</h2><button onClick={()=>toggle('expense',true)} className="text-accent-green font-bold">+ 新增</button></div>
