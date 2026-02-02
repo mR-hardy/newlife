@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>LifeOS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: { 
+                dark: { bg: '#050505', card: '#1A1A1A', border: '#333333', text: '#E5E5E5', sub: '#A3A3A3' },
+                accent: { green: '#10B981', blue: '#3B82F6', orange: '#F59E0B', red: '#EF4444', purple: '#8B5CF6' }
+            },
+            padding: { 'safe-bottom': 'env(safe-area-inset-bottom)', 'safe-top': 'env(safe-area-inset-top)' }
+          }
+        }
+      }
+    </script>
+    <style>
+      html, body { height: 100%; overflow: hidden; background-color: #050505; }
+      #root { height: 100%; display: flex; flex-direction: column; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
