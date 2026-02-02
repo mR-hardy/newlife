@@ -6,7 +6,7 @@ import {
   Fingerprint, LayoutDashboard, Utensils, Dumbbell, Wallet, Mic, 
   Plus, X, Settings, Camera, Activity, Loader2, Trash2, 
   Calendar, ChevronLeft, ChevronRight, ScanLine, Check,
-  ArrowRight
+  Bus, ShoppingBag, Coffee, Gamepad2, MoreHorizontal
 } from 'lucide-react';
 
 // ==========================================
@@ -23,7 +23,7 @@ const api = {
       const response = await fetch(`${GOOGLE_SCRIPT_URL}?action=getAllData&userId=${userId}`);
       const json = await response.json();
       return json.status === 'success' ? json.data : null;
-    } catch (e) { return null; }
+    } catch (e) { console.error(e); return null; }
   },
   post: async (action, sheet, data, userId) => {
     if (!GOOGLE_SCRIPT_URL.startsWith("http")) return;
@@ -37,6 +37,18 @@ const api = {
       return json.status === 'success' ? json.data : null;
     } catch (e) { return null; }
   }
+};
+
+// --- Icon Helper ---
+const IconMap = {
+  Fingerprint, LayoutDashboard, Utensils, Dumbbell, Wallet, Mic, Plus, X, Settings, 
+  Camera, Activity, Loader2, Trash2, Calendar, ChevronLeft, ChevronRight, ScanLine, 
+  Check, Bus, ShoppingBag, Coffee, Gamepad2, MoreHorizontal
+};
+
+const Icon = ({ name, size = 24, className, onClick }) => {
+  const LucideIcon = IconMap[name] || LayoutDashboard;
+  return <LucideIcon size={size} className={className} onClick={onClick} />;
 };
 
 // --- Components ---
@@ -75,11 +87,11 @@ const DateScroller = ({ date, setDate }) => {
   );
 };
 
-const TimelineCard = ({ icon: Icon, color, title, subtitle, value, time, onClick }) => (
+const TimelineCard = ({ icon, color, title, subtitle, value, time, onClick }) => (
   <div onClick={onClick} className="flex gap-4 relative group active:scale-95 transition-transform cursor-pointer">
     <div className="absolute left-[19px] top-10 bottom-[-20px] w-0.5 bg-dark-border z-0 group-last:hidden"></div>
     <div className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center border-4 border-dark-bg ${color} text-white shadow-lg`}>
-      <Icon size={18} />
+      <Icon name={icon} size={18} />
     </div>
     <div className="flex-1 bg-dark-card border border-dark-border rounded-2xl p-4 mb-4 shadow-sm relative overflow-hidden">
       <div className="flex justify-between items-start mb-1">
@@ -116,62 +128,59 @@ const BottomSheet = ({ isOpen, onClose, title, children }) => (
   </AnimatePresence>
 );
 
-// --- 修正後的 ExpenseModal ---
-const ExpenseModal = ({ isOpen, onClose, onSave, date }) => {
-    const [amt, setAmt] = useState('');
-    const [note, setNote] = useState('');
-    const num = (n) => { if(amt.length<7) setAmt(amt+n); };
-    
-    // 確保關閉時清空數據
-    useEffect(() => {
-        if (!isOpen) { setAmt(''); setNote(''); }
-    }, [isOpen]);
+// --- Modals ---
 
-    return (
-        <BottomSheet isOpen={isOpen} onClose={onClose} title="記一筆">
-            <div className="flex flex-col items-center mb-6">
-                <div className="text-5xl font-bold text-white flex items-baseline mb-4">
-                    <span className="text-2xl text-dark-sub mr-1">$</span>{amt||'0'}
-                </div>
-                <input 
-                    placeholder="輸入備註..." 
-                    value={note} 
-                    onChange={e=>setNote(e.target.value)} 
-                    className="dark-input text-center font-bold"
-                />
-            </div>
-            <div className="grid grid-cols-3 gap-3 mb-4">
-                {[1,2,3,4,5,6,7,8,9,'.',0].map(n => (
-                    <button key={n} onClick={()=>num(n)} className="py-4 bg-dark-bg rounded-2xl text-xl font-bold text-white active:bg-dark-border transition">{n}</button>
-                ))}
-                <button onClick={()=>setAmt(amt.slice(0,-1))} className="py-4 bg-accent-red/20 text-accent-red rounded-2xl flex justify-center items-center active:bg-accent-red/30">
-                    <Icon name="Trash2"/>
-                </button>
-            </div>
-            <button 
-                onClick={() => {
-                    if(amt) onSave({
-                        amount: parseInt(amt),
-                        note: note || '消費',
-                        categoryId: 'gen',
-                        date: date.toLocaleDateString(),
-                        time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
-                    }); 
-                    onClose();
-                }} 
-                className="w-full py-4 bg-white text-black rounded-2xl font-bold text-lg active:scale-95 transition"
-            >
-                確認
-            </button>
-        </BottomSheet>
-    );
+const ExpenseModal = ({ isOpen, onClose, onSave, date }) => {
+  const [amt, setAmt] = useState('');
+  const [note, setNote] = useState('');
+  const [cat, setCat] = useState('food');
+  
+  const categories = [
+      {id:'food', icon:'Utensils', label:'餐飲'},
+      {id:'transport', icon:'Bus', label:'交通'},
+      {id:'shopping', icon:'ShoppingBag', label:'購物'},
+      {id:'ent', icon:'Gamepad2', label:'娛樂'},
+      {id:'drink', icon:'Coffee', label:'飲料'},
+      {id:'other', icon:'MoreHorizontal', label:'其他'}
+  ];
+
+  const num = (n) => { if(amt.length<7) setAmt(amt+n); };
+  
+  // Reset state when opened
+  useEffect(() => { if(!isOpen) { setAmt(''); setNote(''); setCat('food'); } }, [isOpen]);
+
+  return (
+    <BottomSheet isOpen={isOpen} onClose={onClose} title="記一筆">
+      <div className="flex flex-col items-center mb-6">
+        <div className="text-5xl font-bold text-white flex items-baseline mb-4"><span className="text-2xl text-dark-sub mr-1">$</span>{amt||'0'}</div>
+        <input placeholder="輸入備註..." value={note} onChange={e=>setNote(e.target.value)} className="dark-input text-center font-bold bg-dark-bg border-none"/>
+      </div>
+      
+      <div className="flex gap-3 overflow-x-auto no-scrollbar pb-4 mb-2" style={{scrollbarWidth:'none'}}>
+          {categories.map(c => (
+              <button key={c.id} onClick={()=>setCat(c.id)} className={`flex flex-col items-center justify-center p-3 rounded-2xl min-w-[70px] transition ${cat===c.id?'bg-accent-blue text-white':'bg-dark-bg text-dark-sub'}`}>
+                  <Icon name={c.icon} size={20}/>
+                  <span className="text-xs mt-1 font-bold">{c.label}</span>
+              </button>
+          ))}
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        {[1,2,3,4,5,6,7,8,9,'.',0].map(n=><button key={n} onClick={()=>num(n)} className="py-4 bg-dark-bg rounded-2xl text-xl font-bold text-white active:bg-dark-border transition">{n}</button>)}
+        <button onClick={()=>setAmt(amt.slice(0,-1))} className="py-4 bg-accent-red/20 text-accent-red rounded-2xl flex justify-center items-center active:bg-accent-red/30"><Trash2/></button>
+      </div>
+      <button onClick={()=>{if(amt) onSave({amount:parseInt(amt),note:note||categories.find(c=>c.id===cat).label,categoryId:cat,date:date.toLocaleDateString(), time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-white text-black rounded-2xl font-bold text-lg active:scale-95 transition">確認</button>
+    </BottomSheet>
+  );
 };
 
 const DietModal = ({ isOpen, onClose, onSave, date }) => {
   const [mode, setMode] = useState('text');
-  const [data, setData] = useState({ name: '', calories: '', protein: '' });
+  const [data, setData] = useState({ name: '', calories: '', protein: '', carbs: '', fat: '' });
   const [loading, setLoading] = useState(false);
   
+  useEffect(() => { if(!isOpen) { setMode('text'); setData({ name: '', calories: '', protein: '', carbs: '', fat: '' }); } }, [isOpen]);
+
   const handleFile = (e) => {
     const f = e.target.files[0]; if(!f) return;
     setLoading(true);
@@ -199,9 +208,11 @@ const DietModal = ({ isOpen, onClose, onSave, date }) => {
           ) : (
             <div className="space-y-3">
               <input placeholder="食物名稱" value={data.name} onChange={e=>setData({...data,name:e.target.value})} className="dark-input"/>
-              <div className="flex gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <input type="number" placeholder="熱量 (kcal)" value={data.calories} onChange={e=>setData({...data,calories:e.target.value})} className="dark-input"/>
                 <input type="number" placeholder="蛋白質 (g)" value={data.protein} onChange={e=>setData({...data,protein:e.target.value})} className="dark-input"/>
+                <input type="number" placeholder="碳水 (g)" value={data.carbs} onChange={e=>setData({...data,carbs:e.target.value})} className="dark-input"/>
+                <input type="number" placeholder="脂肪 (g)" value={data.fat} onChange={e=>setData({...data,fat:e.target.value})} className="dark-input"/>
               </div>
               <button onClick={()=>{onSave({...data, date:date.toLocaleDateString(), time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-accent-orange text-white rounded-2xl font-bold mt-2">儲存</button>
             </div>
@@ -222,11 +233,20 @@ const DietModal = ({ isOpen, onClose, onSave, date }) => {
 };
 
 const WorkoutModal = ({ isOpen, onClose, onSave, date }) => {
-  const [data, setData] = useState({ title: '', duration: 60, calories: 300 });
+  const [data, setData] = useState({ title: '', duration: 60, calories: 300, type: 'Strength' });
+  
+  useEffect(() => { if(!isOpen) setData({ title: '', duration: 60, calories: 300, type: 'Strength' }); }, [isOpen]);
+
   return (
     <BottomSheet isOpen={isOpen} onClose={onClose} title="新增運動">
       <div className="space-y-4">
         <input placeholder="運動項目 (如: 跑步)" value={data.title} onChange={e=>setData({...data,title:e.target.value})} className="dark-input"/>
+        
+        <div className="flex gap-3">
+            <button onClick={()=>setData({...data,type:'Strength'})} className={`flex-1 py-3 rounded-xl font-bold border transition ${data.type==='Strength'?'bg-accent-blue text-white border-transparent':'bg-dark-bg text-dark-sub border-dark-border'}`}>重訓</button>
+            <button onClick={()=>setData({...data,type:'Cardio'})} className={`flex-1 py-3 rounded-xl font-bold border transition ${data.type==='Cardio'?'bg-accent-green text-white border-transparent':'bg-dark-bg text-dark-sub border-dark-border'}`}>有氧</button>
+        </div>
+
         <div className="flex gap-3">
           <input type="number" placeholder="時長 (分)" value={data.duration} onChange={e=>setData({...data,duration:Number(e.target.value)})} className="dark-input"/>
           <input type="number" placeholder="消耗 (kcal)" value={data.calories} onChange={e=>setData({...data,calories:Number(e.target.value)})} className="dark-input"/>
@@ -242,6 +262,8 @@ const InBodyModal = ({ isOpen, onClose, onSaveProfile }) => {
   const [data, setData] = useState({ weight: 70, bodyFat: 20 });
   const [result, setResult] = useState(null);
   
+  useEffect(() => { if(!isOpen) { setResult(null); setLoading(false); } }, [isOpen]);
+
   const handleFile = (e) => {
     const f = e.target.files[0]; if(!f) return;
     setLoading(true);
@@ -282,6 +304,8 @@ const App = () => {
   const [date, setDate] = useState(new Date());
   const [data, setData] = useState({ finance: [], diet: [], workout: [] });
   const [settings, setSettings] = useState({ name: 'User', dailyCalories: 2000, dailyWater: 2000 });
+  
+  // 修正：確保初始狀態為 false
   const [modals, setModals] = useState({ expense: false, diet: false, workout: false, inbody: false, settings: false });
   const toggle = (k, v) => setModals(p => ({...p, [k]: v}));
 
@@ -304,9 +328,9 @@ const App = () => {
   };
 
   const timelineItems = [
-    ...todayData.diet.map(i => ({ ...i, type: 'diet', icon: Utensils, color: 'bg-accent-orange' })),
-    ...todayData.workout.map(i => ({ ...i, type: 'workout', icon: Dumbbell, color: 'bg-accent-blue' })),
-    ...todayData.finance.map(i => ({ ...i, type: 'finance', icon: Wallet, color: 'bg-accent-green' }))
+    ...todayData.diet.map(i => ({ ...i, type: 'diet', icon: 'Utensils', color: 'bg-accent-orange' })),
+    ...todayData.workout.map(i => ({ ...i, type: 'workout', icon: 'Dumbbell', color: 'bg-accent-blue' })),
+    ...todayData.finance.map(i => ({ ...i, type: 'finance', icon: 'Wallet', color: 'bg-accent-green' }))
   ].sort((a, b) => (a.time > b.time ? 1 : -1));
 
   if (!userId) return (
