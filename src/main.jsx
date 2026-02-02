@@ -116,24 +116,55 @@ const BottomSheet = ({ isOpen, onClose, title, children }) => (
   </AnimatePresence>
 );
 
-// --- Modals ---
-const ExpenseModal = ({ onClose, onSave, date }) => {
-  const [amt, setAmt] = useState('');
-  const [note, setNote] = useState('');
-  const num = (n) => { if(amt.length<7) setAmt(amt+n); };
-  return (
-    <BottomSheet isOpen={true} onClose={onClose} title="記一筆">
-      <div className="flex flex-col items-center mb-6">
-        <div className="text-5xl font-bold text-white flex items-baseline mb-4"><span className="text-2xl text-dark-sub mr-1">$</span>{amt||'0'}</div>
-        <input placeholder="輸入備註..." value={note} onChange={e=>setNote(e.target.value)} className="dark-input text-center font-bold"/>
-      </div>
-      <div className="grid grid-cols-3 gap-3 mb-4">
-        {[1,2,3,4,5,6,7,8,9,'.',0].map(n=><button key={n} onClick={()=>num(n)} className="py-4 bg-dark-bg rounded-2xl text-xl font-bold text-white active:bg-dark-border transition">{n}</button>)}
-        <button onClick={()=>setAmt(amt.slice(0,-1))} className="py-4 bg-accent-red/20 text-accent-red rounded-2xl flex justify-center items-center active:bg-accent-red/30"><Trash2/></button>
-      </div>
-      <button onClick={()=>{if(amt) onSave({amount:parseInt(amt),note:note||'消費',categoryId:'gen',date:date.toLocaleDateString(), time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-white text-black rounded-2xl font-bold text-lg active:scale-95 transition">確認</button>
-    </BottomSheet>
-  );
+// --- 修正後的 ExpenseModal ---
+const ExpenseModal = ({ isOpen, onClose, onSave, date }) => {
+    const [amt, setAmt] = useState('');
+    const [note, setNote] = useState('');
+    const num = (n) => { if(amt.length<7) setAmt(amt+n); };
+    
+    // 確保關閉時清空數據
+    useEffect(() => {
+        if (!isOpen) { setAmt(''); setNote(''); }
+    }, [isOpen]);
+
+    return (
+        <BottomSheet isOpen={isOpen} onClose={onClose} title="記一筆">
+            <div className="flex flex-col items-center mb-6">
+                <div className="text-5xl font-bold text-white flex items-baseline mb-4">
+                    <span className="text-2xl text-dark-sub mr-1">$</span>{amt||'0'}
+                </div>
+                <input 
+                    placeholder="輸入備註..." 
+                    value={note} 
+                    onChange={e=>setNote(e.target.value)} 
+                    className="dark-input text-center font-bold"
+                />
+            </div>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+                {[1,2,3,4,5,6,7,8,9,'.',0].map(n => (
+                    <button key={n} onClick={()=>num(n)} className="py-4 bg-dark-bg rounded-2xl text-xl font-bold text-white active:bg-dark-border transition">{n}</button>
+                ))}
+                <button onClick={()=>setAmt(amt.slice(0,-1))} className="py-4 bg-accent-red/20 text-accent-red rounded-2xl flex justify-center items-center active:bg-accent-red/30">
+                    <Icon name="Trash2"/>
+                </button>
+            </div>
+            <button 
+                onClick={() => {
+                    if(amt) onSave({
+                        amount: parseInt(amt),
+                        note: note || '消費',
+                        categoryId: 'gen',
+                        date: date.toLocaleDateString(),
+                        time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+                    }); 
+                    onClose();
+                }} 
+                className="w-full py-4 bg-white text-black rounded-2xl font-bold text-lg active:scale-95 transition"
+            >
+                確認
+            </button>
+        </BottomSheet>
+    );
 };
 
 const DietModal = ({ isOpen, onClose, onSave, date }) => {
