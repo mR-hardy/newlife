@@ -8,7 +8,7 @@ import {
   Calendar, ChevronLeft, ChevronRight, ScanLine, Check,
   Bus, ShoppingBag, Coffee, Gamepad2, MoreHorizontal,
   ListTodo, CheckSquare, Square, Droplet, Thermometer, Clock,
-  Users, UserPlus, DollarSign, CheckCircle
+  Users, UserPlus, DollarSign, CheckCircle, UserCheck
 } from 'lucide-react';
 
 // ==========================================
@@ -28,16 +28,6 @@ const normalizeDate = (dateInput) => {
   return `${y}/${m}/${day}`;
 };
 
-// 判斷是否為本週
-const isSameWeek = (dateString) => {
-  const d = new Date(dateString);
-  const now = new Date();
-  const day = now.getDay() || 7;
-  if (day !== 1) now.setHours(-24 * (day - 1));
-  now.setHours(0, 0, 0, 0);
-  return d >= now;
-};
-
 // --- API Service ---
 const api = {
   fetchAll: async (userId) => {
@@ -50,15 +40,13 @@ const api = {
           ...item,
           date: item.date ? normalizeDate(item.date) : normalizeDate(new Date())
         })) : [];
-        
-        // 關鍵修正：確保所有欄位都有預設值，防止 undefined 崩潰
         return {
           diet: cleanData(json.data.diet),
           workout: cleanData(json.data.workout),
           finance: cleanData(json.data.finance),
           coffee: cleanData(json.data.coffee),
           memo: cleanData(json.data.memo),
-          debts: cleanData(json.data.debts), 
+          debts: cleanData(json.data.debts),
           settings: json.data.settings || {}
         };
       }
@@ -85,7 +73,7 @@ const IconMap = {
   Fingerprint, LayoutDashboard, Utensils, Dumbbell, Wallet, Mic, Plus, X, Settings, 
   Camera, Activity, Loader2, Trash2, Calendar, ChevronLeft, ChevronRight, ScanLine, 
   Check, Bus, ShoppingBag, Coffee, Gamepad2, MoreHorizontal, ListTodo, CheckSquare, Square,
-  Droplet, Thermometer, Clock, Users, UserPlus, DollarSign, CheckCircle
+  Droplet, Thermometer, Clock, Users, UserPlus, DollarSign, CheckCircle, UserCheck
 };
 const Icon = ({ name, size = 24, className, onClick }) => {
   const LucideIcon = IconMap[name] || LayoutDashboard;
@@ -327,7 +315,6 @@ const InBodyModal = ({ isOpen, onClose, onSaveProfile }) => {
   );
 };
 
-// --- New Feature: Split Bill Modal ---
 const SplitModal = ({ isOpen, onClose, onSave, date }) => {
   const [title, setTitle] = useState('');
   const [total, setTotal] = useState('');
@@ -421,7 +408,6 @@ const App = () => {
   const [userId, setUserId] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
   const [date, setDate] = useState(new Date());
-  // 關鍵修正：確保 debts 有初始值
   const [data, setData] = useState({ finance: [], diet: [], workout: [], coffee: [], memo: [], debts: [] });
   const [settings, setSettings] = useState({ name: 'User', dailyCalories: 2000, dailyWater: 2000, weeklyBudget: 5000 });
   const [modals, setModals] = useState({ expense: false, diet: false, workout: false, inbody: false, settings: false, coffee: false, menu: false, split: false });
@@ -479,8 +465,19 @@ const App = () => {
       api.post('update', 'Debts', { id, isPaid: true }, userId);
   };
 
+  // 新增：一鍵收回某人的所有欠款
+  const settlePerson = (name, ids) => {
+      if(!confirm(`確認 ${name} 已還清所有款項？`)) return;
+      // 本地更新
+      setData(prev => ({
+          ...prev,
+          debts: prev.debts.map(d => ids.includes(d.id) ? { ...d, isPaid: true } : d)
+      }));
+      // 後端更新 (批次處理)
+      ids.forEach(id => api.post('update', 'Debts', { id, isPaid: true }, userId));
+  };
+
   const dateStr = normalizeDate(date);
-  // 安全讀取：確保陣列存在
   const todayData = {
     finance: (data.finance || []).filter(i => normalizeDate(i.date) === dateStr),
     diet: (data.diet || []).filter(i => normalizeDate(i.date) === dateStr),
@@ -493,8 +490,18 @@ const App = () => {
   const remainingBudget = (settings.weeklyBudget || 5000) - weeklyFinanceTotal;
   const budgetProgress = Math.min((weeklyFinanceTotal / (settings.weeklyBudget || 5000)) * 100, 100);
 
+  // 分帳邏輯：計算每個人欠我多少
   const unpaidDebts = (data.debts || []).filter(d => String(d.isPaid) !== 'true');
   const totalOwedToMe = unpaidDebts.reduce((a, c) => a + (Number(c.amountOwed) || 0), 0);
+  
+  // Group by Person
+  const debtsByPerson = unpaidDebts.reduce((acc, curr) => {
+      const name = curr.debtor;
+      if (!acc[name]) acc[name] = { total: 0, ids: [] };
+      acc[name].total += Number(curr.amountOwed);
+      acc[name].ids.push(curr.id);
+      return acc;
+  }, {});
 
   const timelineItems = [
     ...todayData.diet.map(i => ({ ...i, type: 'diet', icon: 'Utensils', color: 'bg-accent-orange' })),
@@ -604,12 +611,34 @@ const App = () => {
         )}
 
         {activeTab === 'split' && (
-            <div className="space-y-4">
+            <div className="space-y-6">
                 <div className="bg-dark-card border border-white/10 p-6 rounded-2xl text-center">
                     <div className="text-xs text-gray-500 font-bold mb-1">待收回總額</div>
                     <div className="text-4xl font-bold text-white">${totalOwedToMe.toLocaleString()}</div>
                 </div>
-                <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-white">欠款清單</h2><button onClick={()=>toggle('split',true)} className="text-accent-blue font-bold">+ 新增</button></div>
+                
+                {/* Person Summary Cards */}
+                {Object.keys(debtsByPerson).length > 0 && (
+                    <div className="grid grid-cols-2 gap-3">
+                        {Object.entries(debtsByPerson).map(([name, info]) => (
+                            <div key={name} className="bg-dark-card border border-white/10 p-4 rounded-2xl flex flex-col justify-between">
+                                <div>
+                                    <div className="text-sm text-gray-400 mb-1">欠款人</div>
+                                    <div className="text-xl font-bold text-white mb-1">{name}</div>
+                                    <div className="text-2xl font-bold text-accent-blue">${info.total}</div>
+                                </div>
+                                <button 
+                                    onClick={() => settlePerson(name, info.ids)}
+                                    className="mt-3 w-full py-2 bg-white/10 hover:bg-accent-green hover:text-white text-gray-300 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1"
+                                >
+                                    <Icon name="UserCheck" size={14}/> 全數收回
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                <div className="flex justify-between items-center mt-2"><h2 className="text-xl font-bold text-white">欠款明細</h2><button onClick={()=>toggle('split',true)} className="text-accent-blue font-bold">+ 新增</button></div>
                 
                 <div className="space-y-2">
                     {unpaidDebts.length === 0 ? <div className="text-center text-gray-600 py-10">無人欠款</div> : 
