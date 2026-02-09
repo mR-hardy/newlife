@@ -7,13 +7,14 @@ import {
   Plus, X, Settings, Camera, Activity, Loader2, Trash2, 
   Calendar, ChevronLeft, ChevronRight, ScanLine, Check,
   Bus, ShoppingBag, Coffee, Gamepad2, MoreHorizontal,
-  ListTodo, CheckSquare, Square, Droplet, Thermometer, Clock
+  ListTodo, CheckSquare, Square, Droplet, Thermometer, Clock,
+  Users, UserPlus, DollarSign, CheckCircle
 } from 'lucide-react';
 
 // ==========================================
 // ⚠️ 設定區
 // ==========================================
-const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwK2CYeD2-30vHm0c3K1FSHUpvj7svWRR5sC5O_T7F8WJzxwY0Qp95sESlr8fMHflCx/exec"; 
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzzrjrv8ziAfo6Br4LB7Ga9IhX8tzrPOgwM82_uhovGwpWgd5vNnLZSfmVtF6QKoWOD/exec"; 
 
 
 // --- Helper ---
@@ -25,16 +26,6 @@ const normalizeDate = (dateInput) => {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}/${m}/${day}`;
-};
-
-// 判斷是否為本週 (週一為起始日)
-const isSameWeek = (dateString) => {
-  const d = new Date(dateString);
-  const now = new Date();
-  const day = now.getDay() || 7; // 週日變7
-  if (day !== 1) now.setHours(-24 * (day - 1)); // 推回週一
-  now.setHours(0, 0, 0, 0);
-  return d >= now;
 };
 
 // --- API Service ---
@@ -55,6 +46,7 @@ const api = {
           finance: cleanData(json.data.finance),
           coffee: cleanData(json.data.coffee),
           memo: cleanData(json.data.memo),
+          debts: cleanData(json.data.debts), // 新增
           settings: json.data.settings || {}
         };
       }
@@ -81,7 +73,7 @@ const IconMap = {
   Fingerprint, LayoutDashboard, Utensils, Dumbbell, Wallet, Mic, Plus, X, Settings, 
   Camera, Activity, Loader2, Trash2, Calendar, ChevronLeft, ChevronRight, ScanLine, 
   Check, Bus, ShoppingBag, Coffee, Gamepad2, MoreHorizontal, ListTodo, CheckSquare, Square,
-  Droplet, Thermometer, Clock
+  Droplet, Thermometer, Clock, Users, UserPlus, DollarSign, CheckCircle
 };
 const Icon = ({ name, size = 24, className, onClick }) => {
   const LucideIcon = IconMap[name] || LayoutDashboard;
@@ -323,14 +315,104 @@ const InBodyModal = ({ isOpen, onClose, onSaveProfile }) => {
   );
 };
 
+// --- New Feature: Split Bill Modal ---
+const SplitModal = ({ isOpen, onClose, onSave, date }) => {
+  const [title, setTitle] = useState('');
+  const [total, setTotal] = useState('');
+  const [people, setPeople] = useState([]);
+  const [newName, setNewName] = useState('');
+  const [mode, setMode] = useState('even'); // 'even' or 'custom'
+
+  useEffect(() => { if(!isOpen) { setTitle(''); setTotal(''); setPeople([]); setNewName(''); } }, [isOpen]);
+
+  const addPerson = () => {
+    if(newName.trim()) {
+      setPeople([...people, { name: newName, amount: '' }]);
+      setNewName('');
+    }
+  };
+
+  const updateAmount = (idx, val) => {
+    const newPeople = [...people];
+    newPeople[idx].amount = val;
+    setPeople(newPeople);
+  };
+
+  const handleSubmit = () => {
+    if(!title || !total || people.length === 0) return;
+    const totalNum = parseFloat(total);
+    let debts = [];
+
+    if (mode === 'even') {
+      const share = Math.round(totalNum / (people.length + 1)); // Include self
+      debts = people.map(p => ({ debtor: p.name, amount: share }));
+    } else {
+      debts = people.map(p => ({ debtor: p.name, amount: parseFloat(p.amount) || 0 }));
+    }
+
+    // Send one request per debtor
+    debts.forEach(d => {
+      onSave({ 
+        title: title, 
+        totalAmount: totalNum, 
+        debtor: d.debtor, 
+        amountOwed: d.amount, 
+        isPaid: false,
+        date: normalizeDate(date)
+      });
+    });
+    onClose();
+  };
+
+  return (
+    <BottomSheet isOpen={isOpen} onClose={onClose} title="分帳紀錄">
+      <div className="space-y-4">
+        <input placeholder="消費項目 (如: 晚餐)" value={title} onChange={e=>setTitle(e.target.value)} className="dark-input"/>
+        <div className="relative">
+            <span className="absolute left-4 top-3.5 text-gray-400">$</span>
+            <input type="number" placeholder="總金額" value={total} onChange={e=>setTotal(e.target.value)} className="dark-input pl-8"/>
+        </div>
+
+        <div className="flex bg-white/5 p-1 rounded-xl border border-white/10">
+          <button onClick={()=>setMode('even')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${mode==='even'?'bg-white text-black shadow':'text-gray-400'}`}>平均分配</button>
+          <button onClick={()=>setMode('custom')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${mode==='custom'?'bg-white text-black shadow':'text-gray-400'}`}>手動輸入</button>
+        </div>
+
+        <div className="space-y-2">
+            <div className="flex gap-2">
+                <input placeholder="輸入名字..." value={newName} onChange={e=>setNewName(e.target.value)} className="dark-input flex-1"/>
+                <button onClick={addPerson} className="bg-accent-blue p-3 rounded-xl text-white"><Icon name="Plus"/></button>
+            </div>
+            
+            <div className="max-h-40 overflow-y-auto space-y-2">
+                {people.map((p, i) => (
+                    <div key={i} className="flex justify-between items-center bg-white/5 p-3 rounded-xl">
+                        <span className="text-white font-bold">{p.name}</span>
+                        {mode === 'even' ? (
+                            <span className="text-gray-400 text-sm">應付: ${total ? Math.round(total / (people.length + 1)) : 0}</span>
+                        ) : (
+                            <input type="number" placeholder="$" value={p.amount} onChange={e=>updateAmount(i, e.target.value)} className="bg-transparent text-right text-white w-20 outline-none border-b border-gray-600"/>
+                        )}
+                        <button onClick={()=>setPeople(people.filter((_, idx) => idx !== i))} className="text-red-500 ml-2"><Icon name="X" size={16}/></button>
+                    </div>
+                ))}
+            </div>
+        </div>
+
+        <button onClick={handleSubmit} className="w-full py-4 bg-accent-green text-white rounded-2xl font-bold mt-2">建立分帳</button>
+      </div>
+    </BottomSheet>
+  );
+};
+
 // --- App ---
 const App = () => {
   const [userId, setUserId] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
   const [date, setDate] = useState(new Date());
-  const [data, setData] = useState({ finance: [], diet: [], workout: [], coffee: [], memo: [] });
+  const [data, setData] = useState({ finance: [], diet: [], workout: [], coffee: [], memo: [], debts: [] });
   const [settings, setSettings] = useState({ name: 'User', dailyCalories: 2000, dailyWater: 2000, weeklyBudget: 5000 });
-  const [modals, setModals] = useState({ expense: false, diet: false, workout: false, inbody: false, settings: false, coffee: false, menu: false });
+  const [modals, setModals] = useState({ expense: false, diet: false, workout: false, inbody: false, settings: false, coffee: false, menu: false, split: false });
   const [loading, setLoading] = useState(false);
 
   const toggle = (k, v) => setModals(p => ({...p, [k]: v}));
@@ -344,7 +426,8 @@ const App = () => {
             diet: res.diet || [], 
             workout: res.workout || [],
             coffee: res.coffee || [],
-            memo: res.memo || []
+            memo: res.memo || [],
+            debts: res.debts || []
         });
         if(res.settings && res.settings.name) setSettings(res.settings);
         else setSettings(prev => ({ ...prev, name: id }));
@@ -355,7 +438,12 @@ const App = () => {
 
   const addData = (type, item) => {
     const key = type.toLowerCase();
-    setData(p => ({...p, [key]: [...p[key], item]}));
+    // Special handling for debts (array update)
+    if (type === 'Debts') {
+        setData(p => ({...p, debts: [...p.debts, item]}));
+    } else {
+        setData(p => ({...p, [key]: [...p[key], item]}));
+    }
     api.post('add', type, item, userId);
   };
 
@@ -375,6 +463,14 @@ const App = () => {
       addData('Memo', newItem);
   };
 
+  // Debt Logic
+  const toggleDebtPaid = (id) => {
+      // Mark as paid locally
+      setData(prev => ({ ...prev, debts: prev.debts.map(d => d.id === id ? { ...d, isPaid: true } : d) }));
+      // Update backend
+      api.post('update', 'Debts', { id, isPaid: true }, userId);
+  };
+
   const dateStr = normalizeDate(date);
   const todayData = {
     finance: data.finance.filter(i => normalizeDate(i.date) === dateStr),
@@ -388,6 +484,10 @@ const App = () => {
   const weeklyFinanceTotal = data.finance.filter(i => isSameWeek(i.date)).reduce((a,c) => a + (Number(c.amount)||0), 0);
   const remainingBudget = (settings.weeklyBudget || 5000) - weeklyFinanceTotal;
   const budgetProgress = Math.min((weeklyFinanceTotal / (settings.weeklyBudget || 5000)) * 100, 100);
+
+  // Filter unpaid debts for the Split tab
+  const unpaidDebts = data.debts.filter(d => String(d.isPaid) !== 'true');
+  const totalOwedToMe = unpaidDebts.reduce((a, c) => a + (Number(c.amountOwed) || 0), 0);
 
   const timelineItems = [
     ...todayData.diet.map(i => ({ ...i, type: 'diet', icon: 'Utensils', color: 'bg-accent-orange' })),
@@ -416,7 +516,10 @@ const App = () => {
     <div className="flex flex-col h-[100dvh] w-screen bg-dark-bg overflow-hidden">
       <div className="flex justify-between items-center px-6 pt-safe-top pb-2 mt-4">
         <div><div className="text-xs font-bold text-accent-green uppercase tracking-wider mb-1">ONLINE</div><h1 className="text-2xl font-bold text-white">早安，{settings.name}</h1></div>
-        <button onClick={()=>toggle('settings',true)} className="p-2 bg-dark-card rounded-full border border-white/10 text-gray-400"><Icon name="Settings"/></button>
+        <div className="flex gap-2">
+            <button onClick={()=>toggle('menu',true)} className="p-2 bg-dark-card rounded-full border border-white/10 text-gray-400"><Icon name="ListTodo"/></button>
+            <button onClick={()=>toggle('settings',true)} className="p-2 bg-dark-card rounded-full border border-white/10 text-gray-400"><Icon name="Settings"/></button>
+        </div>
       </div>
 
       <DateScroller date={date} setDate={setDate} />
@@ -430,8 +533,6 @@ const App = () => {
                 <div className="text-2xl font-bold text-white">{todayData.diet.reduce((a,c)=>a+(Number(c.calories)||0),0)} <span className="text-xs text-gray-500">/ {settings.dailyCalories}</span></div>
                 <div className="h-1 bg-white/5 mt-2 rounded-full overflow-hidden"><div className="h-full bg-accent-orange w-1/2"></div></div>
               </div>
-              
-              {/* 財務卡片 (更新版) */}
               <div className="bg-dark-card border border-white/10 p-4 rounded-2xl relative overflow-hidden">
                 <div className="flex justify-between items-start mb-1">
                     <div className="text-xs text-gray-500 font-bold">本週花費</div>
@@ -495,21 +596,26 @@ const App = () => {
             </div>
         )}
 
-        {activeTab === 'memo' && (
+        {activeTab === 'split' && (
             <div className="space-y-4">
-                <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-white">待辦事項</h2></div>
-                <div className="flex gap-2">
-                    <input id="new-memo" placeholder="新增待辦..." className="dark-input flex-1" onKeyDown={e=>{if(e.key==='Enter'){addMemo(e.target.value); e.target.value='';}}}/>
-                    <button onClick={()=>{const el=document.getElementById('new-memo'); if(el.value) {addMemo(el.value); el.value='';}}} className="bg-accent-purple p-3 rounded-xl text-white"><Icon name="Plus"/></button>
+                <div className="bg-dark-card border border-white/10 p-6 rounded-2xl text-center">
+                    <div className="text-xs text-gray-500 font-bold mb-1">待收回總額</div>
+                    <div className="text-4xl font-bold text-white">${totalOwedToMe.toLocaleString()}</div>
                 </div>
+                <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-white">欠款清單</h2><button onClick={()=>toggle('split',true)} className="text-accent-blue font-bold">+ 新增</button></div>
+                
                 <div className="space-y-2">
-                    {todayData.memo.map((m) => (
-                        <div key={m.id} className="flex items-center gap-3 bg-dark-card border border-white/10 p-4 rounded-2xl">
-                            <button onClick={()=>toggleMemo(m.id, m.isDone === 'true' || m.isDone === true)}>
-                                {String(m.isDone) === 'true' ? <Icon name="CheckSquare" className="text-accent-green"/> : <Icon name="Square" className="text-gray-500"/>}
-                            </button>
-                            <span className={`flex-1 ${String(m.isDone) === 'true' ? 'text-gray-600 line-through' : 'text-white'}`}>{m.content}</span>
-                            <button onClick={()=>deleteMemo(m.id)} className="text-accent-red opacity-50 hover:opacity-100"><Icon name="Trash2" size={18}/></button>
+                    {unpaidDebts.length === 0 ? <div className="text-center text-gray-600 py-10">無人欠款</div> : 
+                     unpaidDebts.map((d, i) => (
+                        <div key={i} className="bg-dark-card border border-white/10 p-4 rounded-2xl flex justify-between items-center">
+                            <div>
+                                <div className="font-bold text-white text-lg">{d.debtor}</div>
+                                <div className="text-xs text-gray-500">{d.title} • {d.date}</div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <span className="text-xl font-bold text-accent-blue">${d.amountOwed}</span>
+                                <button onClick={()=>toggleDebtPaid(d.id)} className="p-2 bg-white/10 rounded-full text-accent-green hover:bg-accent-green hover:text-white transition"><Icon name="CheckCircle" size={20}/></button>
+                            </div>
                         </div>
                     ))}
                 </div>
@@ -535,7 +641,7 @@ const App = () => {
             </button>
         </div>
 
-        <button onClick={()=>setActiveTab('memo')} className={`flex flex-col items-center p-2 w-1/5 ${activeTab==='memo'?'text-white':'text-gray-500'}`}><Icon name="ListTodo" size={24} strokeWidth={activeTab==='memo'?2.5:2}/><span className="text-[10px] mt-1">待辦</span></button>
+        <button onClick={()=>setActiveTab('split')} className={`flex flex-col items-center p-2 w-1/5 ${activeTab==='split'?'text-white':'text-gray-500'}`}><Icon name="Users" size={24} strokeWidth={activeTab==='split'?2.5:2}/><span className="text-[10px] mt-1">分帳</span></button>
         <button onClick={()=>setActiveTab('finance')} className={`flex flex-col items-center p-2 w-1/5 ${activeTab==='finance'?'text-white':'text-gray-500'}`}><Icon name="Wallet" size={24} strokeWidth={activeTab==='finance'?2.5:2}/><span className="text-[10px] mt-1">財務</span></button>
       </div>
 
@@ -550,10 +656,40 @@ const App = () => {
                         <button onClick={()=>{toggle('menu',false); toggle('workout',true);}} className="flex flex-col items-center gap-2 p-4 bg-dark-card rounded-2xl border border-white/10 active:scale-95 transition"><div className="w-12 h-12 rounded-full bg-accent-blue flex items-center justify-center text-white"><Icon name="Dumbbell"/></div><span className="text-xs font-bold text-white">記運動</span></button>
                         <button onClick={()=>{toggle('menu',false); toggle('expense',true);}} className="flex flex-col items-center gap-2 p-4 bg-dark-card rounded-2xl border border-white/10 active:scale-95 transition"><div className="w-12 h-12 rounded-full bg-accent-green flex items-center justify-center text-white"><Icon name="Wallet"/></div><span className="text-xs font-bold text-white">記一筆</span></button>
                         <button onClick={()=>{toggle('menu',false); toggle('coffee',true);}} className="flex flex-col items-center gap-2 p-4 bg-dark-card rounded-2xl border border-white/10 active:scale-95 transition"><div className="w-12 h-12 rounded-full bg-yellow-600 flex items-center justify-center text-white"><Icon name="Coffee"/></div><span className="text-xs font-bold text-white">記咖啡</span></button>
+                        <button onClick={()=>{toggle('menu',false); toggle('split',true);}} className="flex flex-col items-center gap-2 p-4 bg-dark-card rounded-2xl border border-white/10 active:scale-95 transition"><div className="w-12 h-12 rounded-full bg-blue-400 flex items-center justify-center text-white"><Icon name="Users"/></div><span className="text-xs font-bold text-white">記分帳</span></button>
                         <button onClick={()=>{toggle('menu',false); toggle('inbody',true);}} className="flex flex-col items-center gap-2 p-4 bg-dark-card rounded-2xl border border-white/10 active:scale-95 transition"><div className="w-12 h-12 rounded-full bg-accent-purple flex items-center justify-center text-white"><Icon name="Activity"/></div><span className="text-xs font-bold text-white">InBody</span></button>
                     </div>
                 </motion.div>
             </>
+        )}
+        {modals.settings && (
+            <BottomSheet isOpen={modals.settings} onClose={()=>toggle('settings',false)} title="設定">
+                <div className="space-y-4">
+                    <div><label className="text-xs text-gray-500 font-bold ml-1">暱稱</label><input value={settings.name} onChange={e=>setSettings({...settings,name:e.target.value})} className="dark-input"/></div>
+                    <div><label className="text-xs text-gray-500 font-bold ml-1">每日熱量 (kcal)</label><input type="number" value={settings.dailyCalories} onChange={e=>setSettings({...settings,dailyCalories:e.target.value})} className="dark-input"/></div>
+                    <div><label className="text-xs text-gray-500 font-bold ml-1">每週預算 ($)</label><input type="number" value={settings.weeklyBudget} onChange={e=>setSettings({...settings,weeklyBudget:e.target.value})} className="dark-input"/></div>
+                    <button onClick={()=>{api.post('saveSettings',null,settings,userId); toggle('settings',false);}} className="w-full py-4 bg-white text-black rounded-2xl font-bold">儲存設定</button>
+                </div>
+                {/* Memo Section inside Settings/Menu for now, or just a list */}
+                <div className="mt-6 pt-6 border-t border-white/10">
+                    <h3 className="text-lg font-bold text-white mb-4">待辦事項 (Memo)</h3>
+                    <div className="flex gap-2 mb-4">
+                        <input id="new-memo" placeholder="新增待辦..." className="dark-input flex-1" onKeyDown={e=>{if(e.key==='Enter'){addMemo(e.target.value); e.target.value='';}}}/>
+                        <button onClick={()=>{const el=document.getElementById('new-memo'); if(el.value) {addMemo(el.value); el.value='';}}} className="bg-accent-purple p-3 rounded-xl text-white"><Icon name="Plus"/></button>
+                    </div>
+                    <div className="space-y-2">
+                        {todayData.memo.map((m) => (
+                            <div key={m.id} className="flex items-center gap-3 bg-white/5 p-3 rounded-xl">
+                                <button onClick={()=>toggleMemo(m.id, m.isDone === 'true' || m.isDone === true)}>
+                                    {String(m.isDone) === 'true' ? <Icon name="CheckSquare" className="text-accent-green"/> : <Icon name="Square" className="text-gray-500"/>}
+                                </button>
+                                <span className={`flex-1 ${String(m.isDone) === 'true' ? 'text-gray-600 line-through' : 'text-white'}`}>{m.content}</span>
+                                <button onClick={()=>deleteMemo(m.id)} className="text-accent-red opacity-50 hover:opacity-100"><Icon name="Trash2" size={18}/></button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </BottomSheet>
         )}
       </AnimatePresence>
 
@@ -562,15 +698,8 @@ const App = () => {
       <WorkoutModal isOpen={modals.workout} onClose={()=>toggle('workout',false)} onSave={i=>addData('Workout',i)} date={date} />
       <InBodyModal isOpen={modals.inbody} onClose={()=>toggle('inbody',false)} onSaveProfile={s=>{setSettings(p=>({...p,...s})); api.post('saveSettings',null,s,userId);}} />
       <CoffeeModal isOpen={modals.coffee} onClose={()=>toggle('coffee',false)} onSave={i=>addData('Coffee',i)} date={date} />
+      <SplitModal isOpen={modals.split} onClose={()=>toggle('split',false)} onSave={i=>addData('Debts',i)} date={date} />
       
-      <BottomSheet isOpen={modals.settings} onClose={()=>toggle('settings',false)} title="設定">
-        <div className="space-y-4">
-          <div><label className="text-xs text-gray-500 font-bold ml-1">暱稱</label><input value={settings.name} onChange={e=>setSettings({...settings,name:e.target.value})} className="dark-input"/></div>
-          <div><label className="text-xs text-gray-500 font-bold ml-1">每日熱量 (kcal)</label><input type="number" value={settings.dailyCalories} onChange={e=>setSettings({...settings,dailyCalories:e.target.value})} className="dark-input"/></div>
-          <div><label className="text-xs text-gray-500 font-bold ml-1">每週預算 ($)</label><input type="number" value={settings.weeklyBudget} onChange={e=>setSettings({...settings,weeklyBudget:e.target.value})} className="dark-input"/></div>
-          <button onClick={()=>{api.post('saveSettings',null,settings,userId); toggle('settings',false);}} className="w-full py-4 bg-white text-black rounded-2xl font-bold">儲存設定</button>
-        </div>
-      </BottomSheet>
     </div>
   );
 };
