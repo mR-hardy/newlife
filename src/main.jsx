@@ -28,6 +28,16 @@ const normalizeDate = (dateInput) => {
   return `${y}/${m}/${day}`;
 };
 
+// 判斷是否為本週
+const isSameWeek = (dateString) => {
+  const d = new Date(dateString);
+  const now = new Date();
+  const day = now.getDay() || 7;
+  if (day !== 1) now.setHours(-24 * (day - 1));
+  now.setHours(0, 0, 0, 0);
+  return d >= now;
+};
+
 // --- API Service ---
 const api = {
   fetchAll: async (userId) => {
@@ -40,13 +50,15 @@ const api = {
           ...item,
           date: item.date ? normalizeDate(item.date) : normalizeDate(new Date())
         })) : [];
+        
+        // 關鍵修正：確保所有欄位都有預設值，防止 undefined 崩潰
         return {
           diet: cleanData(json.data.diet),
           workout: cleanData(json.data.workout),
           finance: cleanData(json.data.finance),
           coffee: cleanData(json.data.coffee),
           memo: cleanData(json.data.memo),
-          debts: cleanData(json.data.debts), // 新增
+          debts: cleanData(json.data.debts), 
           settings: json.data.settings || {}
         };
       }
@@ -303,8 +315,8 @@ const InBodyModal = ({ isOpen, onClose, onSaveProfile }) => {
         </div>
       ) : (
         <div className="text-center space-y-6 w-full">
-          <div className="bg-accent-purple/20 p-8 rounded-3xl border border-accent-purple/30"><div className="text-sm text-accent-purple font-bold mb-2">建議每日攝取</div><div className="text-6xl font-bold text-white">{result.target} <span className="text-lg text-gray-400">kcal</span></div></div>
-          <div className="flex gap-4 justify-center text-gray-400 font-bold">
+          <div className="bg-accent-purple/20 p-8 rounded-3xl border border-accent-purple/30"><div className="text-sm text-accent-purple font-bold mb-2">建議每日攝取</div><div className="text-6xl font-bold text-white">{result.target} <span className="text-lg text-dark-sub">kcal</span></div></div>
+          <div className="flex gap-4 justify-center text-dark-sub font-bold">
             <span className="bg-white/5 px-4 py-2 rounded-xl border border-white/10">體重: {data.weight}kg</span>
             <span className="bg-white/5 px-4 py-2 rounded-xl border border-white/10">體脂: {data.bodyFat}%</span>
           </div>
@@ -321,7 +333,7 @@ const SplitModal = ({ isOpen, onClose, onSave, date }) => {
   const [total, setTotal] = useState('');
   const [people, setPeople] = useState([]);
   const [newName, setNewName] = useState('');
-  const [mode, setMode] = useState('even'); // 'even' or 'custom'
+  const [mode, setMode] = useState('even');
 
   useEffect(() => { if(!isOpen) { setTitle(''); setTotal(''); setPeople([]); setNewName(''); } }, [isOpen]);
 
@@ -344,13 +356,12 @@ const SplitModal = ({ isOpen, onClose, onSave, date }) => {
     let debts = [];
 
     if (mode === 'even') {
-      const share = Math.round(totalNum / (people.length + 1)); // Include self
+      const share = Math.round(totalNum / (people.length + 1));
       debts = people.map(p => ({ debtor: p.name, amount: share }));
     } else {
       debts = people.map(p => ({ debtor: p.name, amount: parseFloat(p.amount) || 0 }));
     }
 
-    // Send one request per debtor
     debts.forEach(d => {
       onSave({ 
         title: title, 
@@ -410,6 +421,7 @@ const App = () => {
   const [userId, setUserId] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
   const [date, setDate] = useState(new Date());
+  // 關鍵修正：確保 debts 有初始值
   const [data, setData] = useState({ finance: [], diet: [], workout: [], coffee: [], memo: [], debts: [] });
   const [settings, setSettings] = useState({ name: 'User', dailyCalories: 2000, dailyWater: 2000, weeklyBudget: 5000 });
   const [modals, setModals] = useState({ expense: false, diet: false, workout: false, inbody: false, settings: false, coffee: false, menu: false, split: false });
@@ -438,11 +450,10 @@ const App = () => {
 
   const addData = (type, item) => {
     const key = type.toLowerCase();
-    // Special handling for debts (array update)
     if (type === 'Debts') {
-        setData(p => ({...p, debts: [...p.debts, item]}));
+        setData(p => ({...p, debts: [...(p.debts||[]), item]}));
     } else {
-        setData(p => ({...p, [key]: [...p[key], item]}));
+        setData(p => ({...p, [key]: [...(p[key]||[]), item]}));
     }
     api.post('add', type, item, userId);
   };
@@ -463,30 +474,26 @@ const App = () => {
       addData('Memo', newItem);
   };
 
-  // Debt Logic
   const toggleDebtPaid = (id) => {
-      // Mark as paid locally
       setData(prev => ({ ...prev, debts: prev.debts.map(d => d.id === id ? { ...d, isPaid: true } : d) }));
-      // Update backend
       api.post('update', 'Debts', { id, isPaid: true }, userId);
   };
 
   const dateStr = normalizeDate(date);
+  // 安全讀取：確保陣列存在
   const todayData = {
-    finance: data.finance.filter(i => normalizeDate(i.date) === dateStr),
-    diet: data.diet.filter(i => normalizeDate(i.date) === dateStr),
-    workout: data.workout.filter(i => normalizeDate(i.date) === dateStr),
-    coffee: data.coffee.filter(i => normalizeDate(i.date) === dateStr),
-    memo: data.memo.filter(i => normalizeDate(i.date) === dateStr)
+    finance: (data.finance || []).filter(i => normalizeDate(i.date) === dateStr),
+    diet: (data.diet || []).filter(i => normalizeDate(i.date) === dateStr),
+    workout: (data.workout || []).filter(i => normalizeDate(i.date) === dateStr),
+    coffee: (data.coffee || []).filter(i => normalizeDate(i.date) === dateStr),
+    memo: (data.memo || []).filter(i => normalizeDate(i.date) === dateStr)
   };
 
-  // Calculate Budget
-  const weeklyFinanceTotal = data.finance.filter(i => isSameWeek(i.date)).reduce((a,c) => a + (Number(c.amount)||0), 0);
+  const weeklyFinanceTotal = (data.finance || []).filter(i => isSameWeek(i.date)).reduce((a,c) => a + (Number(c.amount)||0), 0);
   const remainingBudget = (settings.weeklyBudget || 5000) - weeklyFinanceTotal;
   const budgetProgress = Math.min((weeklyFinanceTotal / (settings.weeklyBudget || 5000)) * 100, 100);
 
-  // Filter unpaid debts for the Split tab
-  const unpaidDebts = data.debts.filter(d => String(d.isPaid) !== 'true');
+  const unpaidDebts = (data.debts || []).filter(d => String(d.isPaid) !== 'true');
   const totalOwedToMe = unpaidDebts.reduce((a, c) => a + (Number(c.amountOwed) || 0), 0);
 
   const timelineItems = [
