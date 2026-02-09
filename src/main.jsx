@@ -27,6 +27,16 @@ const normalizeDate = (dateInput) => {
   return `${y}/${m}/${day}`;
 };
 
+// 判斷是否為本週 (週一為起始日)
+const isSameWeek = (dateString) => {
+  const d = new Date(dateString);
+  const now = new Date();
+  const day = now.getDay() || 7; // 週日變7
+  if (day !== 1) now.setHours(-24 * (day - 1)); // 推回週一
+  now.setHours(0, 0, 0, 0);
+  return d >= now;
+};
+
 // --- API Service ---
 const api = {
   fetchAll: async (userId) => {
@@ -319,7 +329,7 @@ const App = () => {
   const [activeTab, setActiveTab] = useState('home');
   const [date, setDate] = useState(new Date());
   const [data, setData] = useState({ finance: [], diet: [], workout: [], coffee: [], memo: [] });
-  const [settings, setSettings] = useState({ name: 'User', dailyCalories: 2000, dailyWater: 2000 });
+  const [settings, setSettings] = useState({ name: 'User', dailyCalories: 2000, dailyWater: 2000, weeklyBudget: 5000 });
   const [modals, setModals] = useState({ expense: false, diet: false, workout: false, inbody: false, settings: false, coffee: false, menu: false });
   const [loading, setLoading] = useState(false);
 
@@ -374,6 +384,11 @@ const App = () => {
     memo: data.memo.filter(i => normalizeDate(i.date) === dateStr)
   };
 
+  // Calculate Budget
+  const weeklyFinanceTotal = data.finance.filter(i => isSameWeek(i.date)).reduce((a,c) => a + (Number(c.amount)||0), 0);
+  const remainingBudget = (settings.weeklyBudget || 5000) - weeklyFinanceTotal;
+  const budgetProgress = Math.min((weeklyFinanceTotal / (settings.weeklyBudget || 5000)) * 100, 100);
+
   const timelineItems = [
     ...todayData.diet.map(i => ({ ...i, type: 'diet', icon: 'Utensils', color: 'bg-accent-orange' })),
     ...todayData.workout.map(i => ({ ...i, type: 'workout', icon: 'Dumbbell', color: 'bg-accent-blue' })),
@@ -415,10 +430,17 @@ const App = () => {
                 <div className="text-2xl font-bold text-white">{todayData.diet.reduce((a,c)=>a+(Number(c.calories)||0),0)} <span className="text-xs text-gray-500">/ {settings.dailyCalories}</span></div>
                 <div className="h-1 bg-white/5 mt-2 rounded-full overflow-hidden"><div className="h-full bg-accent-orange w-1/2"></div></div>
               </div>
-              <div className="bg-dark-card border border-white/10 p-4 rounded-2xl">
-                <div className="text-xs text-gray-500 font-bold mb-1">今日花費</div>
-                <div className="text-2xl font-bold text-white">${todayData.finance.reduce((a,c)=>a+(Number(c.amount)||0),0)}</div>
-                <div className="h-1 bg-white/5 mt-2 rounded-full overflow-hidden"><div className="h-full bg-accent-green w-1/3"></div></div>
+              
+              {/* 財務卡片 (更新版) */}
+              <div className="bg-dark-card border border-white/10 p-4 rounded-2xl relative overflow-hidden">
+                <div className="flex justify-between items-start mb-1">
+                    <div className="text-xs text-gray-500 font-bold">本週花費</div>
+                    <div className={`text-[10px] font-bold ${remainingBudget < 0 ? 'text-accent-red' : 'text-accent-green'}`}>餘 ${remainingBudget.toLocaleString()}</div>
+                </div>
+                <div className="text-2xl font-bold text-white">${weeklyFinanceTotal.toLocaleString()}</div>
+                <div className="h-1 bg-white/5 mt-2 rounded-full overflow-hidden">
+                    <div className={`h-full ${remainingBudget < 0 ? 'bg-accent-red' : 'bg-accent-green'}`} style={{width: `${budgetProgress}%`}}></div>
+                </div>
               </div>
             </div>
 
@@ -545,6 +567,7 @@ const App = () => {
         <div className="space-y-4">
           <div><label className="text-xs text-gray-500 font-bold ml-1">暱稱</label><input value={settings.name} onChange={e=>setSettings({...settings,name:e.target.value})} className="dark-input"/></div>
           <div><label className="text-xs text-gray-500 font-bold ml-1">每日熱量 (kcal)</label><input type="number" value={settings.dailyCalories} onChange={e=>setSettings({...settings,dailyCalories:e.target.value})} className="dark-input"/></div>
+          <div><label className="text-xs text-gray-500 font-bold ml-1">每週預算 ($)</label><input type="number" value={settings.weeklyBudget} onChange={e=>setSettings({...settings,weeklyBudget:e.target.value})} className="dark-input"/></div>
           <button onClick={()=>{api.post('saveSettings',null,settings,userId); toggle('settings',false);}} className="w-full py-4 bg-white text-black rounded-2xl font-bold">儲存設定</button>
         </div>
       </BottomSheet>
