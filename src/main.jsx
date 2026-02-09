@@ -41,7 +41,6 @@ const api = {
           date: item.date ? normalizeDate(item.date) : normalizeDate(new Date())
         })) : [];
         
-        // 防呆：確保所有欄位都存在
         return {
           diet: cleanData(json.data.diet),
           workout: cleanData(json.data.workout),
@@ -78,7 +77,6 @@ const IconMap = {
   Droplet, Thermometer, Clock, Users, UserPlus, DollarSign, CheckCircle, UserCheck
 };
 
-// 防呆 Icon 組件
 const Icon = ({ name, size = 24, className, onClick }) => {
   const LucideIcon = IconMap[name] || LayoutDashboard; 
   return <LucideIcon size={size} className={className} onClick={onClick} />;
@@ -358,8 +356,10 @@ const SplitModal = ({ isOpen, onClose, onSave, date }) => {
       debts = people.map(p => ({ debtor: p.name, amount: parseFloat(p.amount) || 0 }));
     }
 
-    debts.forEach(d => {
+    debts.forEach((d, index) => {
+      // 關鍵修正：給每個分帳項目一個獨立的 ID (時間戳 + 索引)
       onSave({ 
+        id: Date.now() + index, 
         title: title, 
         totalAmount: totalNum, 
         debtor: d.debtor, 
@@ -417,6 +417,7 @@ const App = () => {
   const [userId, setUserId] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
   const [date, setDate] = useState(new Date());
+  // 確保初始狀態完整，防止黑屏
   const [data, setData] = useState({ finance: [], diet: [], workout: [], coffee: [], memo: [], debts: [] });
   const [settings, setSettings] = useState({ name: 'User', dailyCalories: 2000, dailyWater: 2000, weeklyBudget: 5000 });
   const [modals, setModals] = useState({ expense: false, diet: false, workout: false, inbody: false, settings: false, coffee: false, menu: false, split: false });
@@ -434,7 +435,7 @@ const App = () => {
             workout: res.workout || [],
             coffee: res.coffee || [],
             memo: res.memo || [],
-            debts: res.debts || []
+            debts: res.debts || [] // 確保 debts 有值
         });
         if(res.settings && res.settings.name) setSettings(res.settings);
         else setSettings(prev => ({ ...prev, name: id }));
@@ -445,12 +446,15 @@ const App = () => {
 
   const addData = (type, item) => {
     const key = type.toLowerCase();
+    // 確保使用 item 裡的 ID (如果有)，否則生成新的
+    const newItem = { ...item, id: item.id || Date.now() };
+    
     if (type === 'Debts') {
-        setData(p => ({...p, debts: [...(p.debts||[]), item]}));
+        setData(p => ({...p, debts: [...(p.debts||[]), newItem]}));
     } else {
-        setData(p => ({...p, [key]: [...(p[key]||[]), item]}));
+        setData(p => ({...p, [key]: [...(p[key]||[]), newItem]}));
     }
-    api.post('add', type, item, userId);
+    api.post('add', type, newItem, userId);
   };
 
   const toggleMemo = (id, currentStatus) => {
@@ -474,21 +478,17 @@ const App = () => {
       api.post('update', 'Debts', { id, isPaid: true }, userId);
   };
 
-  // 修正後的一鍵收回邏輯
   const settlePerson = (name, ids) => {
       if(!confirm(`確認 ${name} 已還清所有款項？`)) return;
-      
-      // 只更新該用戶的 debts
       setData(prev => ({
           ...prev,
           debts: prev.debts.map(d => ids.includes(d.id) ? { ...d, isPaid: true } : d)
       }));
-      
-      // 後端更新
       ids.forEach(id => api.post('update', 'Debts', { id, isPaid: true }, userId));
   };
 
   const dateStr = normalizeDate(date);
+  // 防呆：確保陣列存在
   const todayData = {
     finance: (data.finance || []).filter(i => normalizeDate(i.date) === dateStr),
     diet: (data.diet || []).filter(i => normalizeDate(i.date) === dateStr),
@@ -497,16 +497,6 @@ const App = () => {
     memo: (data.memo || []).filter(i => normalizeDate(i.date) === dateStr)
   };
 
-  // Calculate Budget
-  const isSameWeek = (dStr) => {
-      const d = new Date(dStr);
-      const now = new Date();
-      const day = now.getDay() || 7;
-      if(day!==1) now.setHours(-24*(day-1));
-      now.setHours(0,0,0,0);
-      return d >= now;
-  };
-  
   const weeklyFinanceTotal = (data.finance || []).filter(i => isSameWeek(i.date)).reduce((a,c) => a + (Number(c.amount)||0), 0);
   const remainingBudget = (settings.weeklyBudget || 5000) - weeklyFinanceTotal;
   const budgetProgress = Math.min((weeklyFinanceTotal / (settings.weeklyBudget || 5000)) * 100, 100);
