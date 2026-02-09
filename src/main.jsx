@@ -559,7 +559,7 @@ const App = () => {
       <div className="w-full max-w-sm p-8 text-center">
         <div className="w-24 h-24 bg-dark-card rounded-full flex items-center justify-center mx-auto mb-8 text-white border border-white/10 shadow-2xl shadow-accent-purple/20"><Icon name="Fingerprint" size={48}/></div>
         <h1 className="text-3xl font-bold mb-2 text-white">LifeOS</h1>
-        <p className="text-gray-500 mb-8 text-sm">量化生活，掌握自我</p>
+        <p className="text-gray-500 mb-8 text-sm">遠離Creepy，有你有我</p>
         <form onSubmit={e=>{e.preventDefault(); handleLogin(e.target.elements.uid.value)}}>
           <input name="uid" placeholder="輸入用戶 ID" className="dark-input text-center font-bold mb-4" required />
           <button disabled={loading} className="w-full py-4 bg-white text-black rounded-2xl font-bold active:scale-95 transition flex justify-center gap-2">
