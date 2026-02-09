@@ -40,13 +40,15 @@ const api = {
           ...item,
           date: item.date ? normalizeDate(item.date) : normalizeDate(new Date())
         })) : [];
+        
+        // 防呆：確保所有欄位都存在，即使後端沒回傳
         return {
           diet: cleanData(json.data.diet),
           workout: cleanData(json.data.workout),
           finance: cleanData(json.data.finance),
           coffee: cleanData(json.data.coffee),
           memo: cleanData(json.data.memo),
-          debts: cleanData(json.data.debts),
+          debts: cleanData(json.data.debts), 
           settings: json.data.settings || {}
         };
       }
@@ -75,8 +77,10 @@ const IconMap = {
   Check, Bus, ShoppingBag, Coffee, Gamepad2, MoreHorizontal, ListTodo, CheckSquare, Square,
   Droplet, Thermometer, Clock, Users, UserPlus, DollarSign, CheckCircle, UserCheck
 };
+
+// 防呆 Icon 組件
 const Icon = ({ name, size = 24, className, onClick }) => {
-  const LucideIcon = IconMap[name] || LayoutDashboard;
+  const LucideIcon = IconMap[name] || LayoutDashboard; // 預設圖標
   return <LucideIcon size={size} className={className} onClick={onClick} />;
 };
 
@@ -116,24 +120,30 @@ const DateScroller = ({ date, setDate }) => {
   );
 };
 
-const TimelineCard = ({ icon, color, title, subtitle, value, time }) => (
-  <div className="flex gap-4 relative group mb-4">
-    <div className="absolute left-[19px] top-8 bottom-[-24px] w-0.5 bg-white/10 z-0 group-last:hidden"></div>
-    <div className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center border-4 border-dark-bg ${color} text-white shadow-lg shrink-0`}>
-      <Icon name={icon} size={18} />
-    </div>
-    <div className="flex-1 bg-dark-card border border-white/10 rounded-2xl p-4 shadow-sm relative overflow-hidden">
-      <div className="flex justify-between items-start mb-1">
-        <h4 className="font-bold text-white text-base line-clamp-1">{title}</h4>
-        <span className="text-xs font-mono text-gray-500 shrink-0 ml-2">{time}</span>
+// 防呆 TimelineCard：確保 color 存在
+const TimelineCard = ({ icon, color, title, subtitle, value, time }) => {
+  const safeColor = color || 'bg-gray-600'; // 預設顏色，防止崩潰
+  const textColor = safeColor.replace('bg-', 'text-');
+
+  return (
+    <div className="flex gap-4 relative group mb-4">
+      <div className="absolute left-[19px] top-8 bottom-[-24px] w-0.5 bg-white/10 z-0 group-last:hidden"></div>
+      <div className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center border-4 border-dark-bg ${safeColor} text-white shadow-lg shrink-0`}>
+        <Icon name={icon} size={18} />
       </div>
-      <div className="flex justify-between items-end">
-        <p className="text-sm text-gray-400">{subtitle}</p>
-        <span className={`text-lg font-bold ${color.replace('bg-', 'text-')}`}>{value}</span>
+      <div className="flex-1 bg-dark-card border border-white/10 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+        <div className="flex justify-between items-start mb-1">
+          <h4 className="font-bold text-white text-base line-clamp-1">{title}</h4>
+          <span className="text-xs font-mono text-gray-500 shrink-0 ml-2">{time}</span>
+        </div>
+        <div className="flex justify-between items-end">
+          <p className="text-sm text-gray-400">{subtitle}</p>
+          <span className={`text-lg font-bold ${textColor}`}>{value}</span>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 const BottomSheet = ({ isOpen, onClose, title, children }) => (
   <AnimatePresence>
@@ -408,6 +418,7 @@ const App = () => {
   const [userId, setUserId] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
   const [date, setDate] = useState(new Date());
+  // 關鍵修正：確保所有狀態都有初始值
   const [data, setData] = useState({ finance: [], diet: [], workout: [], coffee: [], memo: [], debts: [] });
   const [settings, setSettings] = useState({ name: 'User', dailyCalories: 2000, dailyWater: 2000, weeklyBudget: 5000 });
   const [modals, setModals] = useState({ expense: false, diet: false, workout: false, inbody: false, settings: false, coffee: false, menu: false, split: false });
@@ -425,7 +436,7 @@ const App = () => {
             workout: res.workout || [],
             coffee: res.coffee || [],
             memo: res.memo || [],
-            debts: res.debts || []
+            debts: res.debts || [] // 確保 debts 被賦值
         });
         if(res.settings && res.settings.name) setSettings(res.settings);
         else setSettings(prev => ({ ...prev, name: id }));
@@ -436,6 +447,7 @@ const App = () => {
 
   const addData = (type, item) => {
     const key = type.toLowerCase();
+    // 修正：Debts 的 key 是 debts，不是 Debts
     if (type === 'Debts') {
         setData(p => ({...p, debts: [...(p.debts||[]), item]}));
     } else {
@@ -465,19 +477,18 @@ const App = () => {
       api.post('update', 'Debts', { id, isPaid: true }, userId);
   };
 
-  // 新增：一鍵收回某人的所有欠款
   const settlePerson = (name, ids) => {
       if(!confirm(`確認 ${name} 已還清所有款項？`)) return;
-      // 本地更新
       setData(prev => ({
           ...prev,
           debts: prev.debts.map(d => ids.includes(d.id) ? { ...d, isPaid: true } : d)
       }));
-      // 後端更新 (批次處理)
       ids.forEach(id => api.post('update', 'Debts', { id, isPaid: true }, userId));
   };
 
   const dateStr = normalizeDate(date);
+  
+  // 防呆：確保 filter 前陣列存在
   const todayData = {
     finance: (data.finance || []).filter(i => normalizeDate(i.date) === dateStr),
     diet: (data.diet || []).filter(i => normalizeDate(i.date) === dateStr),
@@ -486,15 +497,21 @@ const App = () => {
     memo: (data.memo || []).filter(i => normalizeDate(i.date) === dateStr)
   };
 
-  const weeklyFinanceTotal = (data.finance || []).filter(i => isSameWeek(i.date)).reduce((a,c) => a + (Number(c.amount)||0), 0);
+  const weeklyFinanceTotal = (data.finance || []).filter(i => {
+      const d = new Date(i.date);
+      const now = new Date();
+      const day = now.getDay() || 7;
+      if(day!==1) now.setHours(-24*(day-1));
+      now.setHours(0,0,0,0);
+      return d >= now;
+  }).reduce((a,c) => a + (Number(c.amount)||0), 0);
+  
   const remainingBudget = (settings.weeklyBudget || 5000) - weeklyFinanceTotal;
   const budgetProgress = Math.min((weeklyFinanceTotal / (settings.weeklyBudget || 5000)) * 100, 100);
 
-  // 分帳邏輯：計算每個人欠我多少
   const unpaidDebts = (data.debts || []).filter(d => String(d.isPaid) !== 'true');
   const totalOwedToMe = unpaidDebts.reduce((a, c) => a + (Number(c.amountOwed) || 0), 0);
   
-  // Group by Person
   const debtsByPerson = unpaidDebts.reduce((acc, curr) => {
       const name = curr.debtor;
       if (!acc[name]) acc[name] = { total: 0, ids: [] };
@@ -617,7 +634,6 @@ const App = () => {
                     <div className="text-4xl font-bold text-white">${totalOwedToMe.toLocaleString()}</div>
                 </div>
                 
-                {/* Person Summary Cards */}
                 {Object.keys(debtsByPerson).length > 0 && (
                     <div className="grid grid-cols-2 gap-3">
                         {Object.entries(debtsByPerson).map(([name, info]) => (
