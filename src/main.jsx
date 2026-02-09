@@ -41,7 +41,7 @@ const api = {
           date: item.date ? normalizeDate(item.date) : normalizeDate(new Date())
         })) : [];
         
-        // 防呆：確保所有欄位都存在，即使後端沒回傳
+        // 防呆：確保所有欄位都存在
         return {
           diet: cleanData(json.data.diet),
           workout: cleanData(json.data.workout),
@@ -80,7 +80,7 @@ const IconMap = {
 
 // 防呆 Icon 組件
 const Icon = ({ name, size = 24, className, onClick }) => {
-  const LucideIcon = IconMap[name] || LayoutDashboard; // 預設圖標
+  const LucideIcon = IconMap[name] || LayoutDashboard; 
   return <LucideIcon size={size} className={className} onClick={onClick} />;
 };
 
@@ -120,9 +120,8 @@ const DateScroller = ({ date, setDate }) => {
   );
 };
 
-// 防呆 TimelineCard：確保 color 存在
 const TimelineCard = ({ icon, color, title, subtitle, value, time }) => {
-  const safeColor = color || 'bg-gray-600'; // 預設顏色，防止崩潰
+  const safeColor = color || 'bg-gray-600';
   const textColor = safeColor.replace('bg-', 'text-');
 
   return (
@@ -418,7 +417,6 @@ const App = () => {
   const [userId, setUserId] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
   const [date, setDate] = useState(new Date());
-  // 關鍵修正：確保所有狀態都有初始值
   const [data, setData] = useState({ finance: [], diet: [], workout: [], coffee: [], memo: [], debts: [] });
   const [settings, setSettings] = useState({ name: 'User', dailyCalories: 2000, dailyWater: 2000, weeklyBudget: 5000 });
   const [modals, setModals] = useState({ expense: false, diet: false, workout: false, inbody: false, settings: false, coffee: false, menu: false, split: false });
@@ -436,7 +434,7 @@ const App = () => {
             workout: res.workout || [],
             coffee: res.coffee || [],
             memo: res.memo || [],
-            debts: res.debts || [] // 確保 debts 被賦值
+            debts: res.debts || []
         });
         if(res.settings && res.settings.name) setSettings(res.settings);
         else setSettings(prev => ({ ...prev, name: id }));
@@ -447,7 +445,6 @@ const App = () => {
 
   const addData = (type, item) => {
     const key = type.toLowerCase();
-    // 修正：Debts 的 key 是 debts，不是 Debts
     if (type === 'Debts') {
         setData(p => ({...p, debts: [...(p.debts||[]), item]}));
     } else {
@@ -477,18 +474,21 @@ const App = () => {
       api.post('update', 'Debts', { id, isPaid: true }, userId);
   };
 
+  // 修正後的一鍵收回邏輯
   const settlePerson = (name, ids) => {
       if(!confirm(`確認 ${name} 已還清所有款項？`)) return;
+      
+      // 只更新該用戶的 debts
       setData(prev => ({
           ...prev,
           debts: prev.debts.map(d => ids.includes(d.id) ? { ...d, isPaid: true } : d)
       }));
+      
+      // 後端更新
       ids.forEach(id => api.post('update', 'Debts', { id, isPaid: true }, userId));
   };
 
   const dateStr = normalizeDate(date);
-  
-  // 防呆：確保 filter 前陣列存在
   const todayData = {
     finance: (data.finance || []).filter(i => normalizeDate(i.date) === dateStr),
     diet: (data.diet || []).filter(i => normalizeDate(i.date) === dateStr),
@@ -497,15 +497,17 @@ const App = () => {
     memo: (data.memo || []).filter(i => normalizeDate(i.date) === dateStr)
   };
 
-  const weeklyFinanceTotal = (data.finance || []).filter(i => {
-      const d = new Date(i.date);
+  // Calculate Budget
+  const isSameWeek = (dStr) => {
+      const d = new Date(dStr);
       const now = new Date();
       const day = now.getDay() || 7;
       if(day!==1) now.setHours(-24*(day-1));
       now.setHours(0,0,0,0);
       return d >= now;
-  }).reduce((a,c) => a + (Number(c.amount)||0), 0);
+  };
   
+  const weeklyFinanceTotal = (data.finance || []).filter(i => isSameWeek(i.date)).reduce((a,c) => a + (Number(c.amount)||0), 0);
   const remainingBudget = (settings.weeklyBudget || 5000) - weeklyFinanceTotal;
   const budgetProgress = Math.min((weeklyFinanceTotal / (settings.weeklyBudget || 5000)) * 100, 100);
 
