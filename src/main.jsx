@@ -17,6 +17,25 @@ import {
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzzrjrv8ziAfo6Br4LB7Ga9IhX8tzrPOgwM82_uhovGwpWgd5vNnLZSfmVtF6QKoWOD/exec"; 
 
 
+// --- Error Boundary (防止黑屏的最後防線) ---
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  componentDidCatch(error, errorInfo) { console.error("React Error:", error, errorInfo); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="h-screen w-screen bg-red-900 text-white p-6 overflow-auto">
+          <h1 className="text-2xl font-bold mb-4">⚠️ 系統發生錯誤</h1>
+          <pre className="text-xs font-mono bg-black/50 p-4 rounded">{this.state.error.toString()}</pre>
+          <button onClick={() => window.location.reload()} className="mt-6 px-6 py-3 bg-white text-red-900 rounded-xl font-bold">重新整理</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // --- Helper ---
 const normalizeDate = (dateInput) => {
   if (!dateInput) return "";
@@ -77,6 +96,7 @@ const IconMap = {
   Droplet, Thermometer, Clock, Users, UserPlus, DollarSign, CheckCircle, UserCheck
 };
 
+// 防呆 Icon 組件
 const Icon = ({ name, size = 24, className, onClick }) => {
   const LucideIcon = IconMap[name] || LayoutDashboard; 
   return <LucideIcon size={size} className={className} onClick={onClick} />;
@@ -118,8 +138,9 @@ const DateScroller = ({ date, setDate }) => {
   );
 };
 
+// 防呆 TimelineCard
 const TimelineCard = ({ icon, color, title, subtitle, value, time }) => {
-  const safeColor = color || 'bg-gray-600';
+  const safeColor = color && typeof color === 'string' ? color : 'bg-gray-600';
   const textColor = safeColor.replace('bg-', 'text-');
 
   return (
@@ -130,7 +151,7 @@ const TimelineCard = ({ icon, color, title, subtitle, value, time }) => {
       </div>
       <div className="flex-1 bg-dark-card border border-white/10 rounded-2xl p-4 shadow-sm relative overflow-hidden">
         <div className="flex justify-between items-start mb-1">
-          <h4 className="font-bold text-white text-base line-clamp-1">{title}</h4>
+          <h4 className="font-bold text-white text-base line-clamp-1">{title || '未命名'}</h4>
           <span className="text-xs font-mono text-gray-500 shrink-0 ml-2">{time}</span>
         </div>
         <div className="flex justify-between items-end">
@@ -357,7 +378,6 @@ const SplitModal = ({ isOpen, onClose, onSave, date }) => {
     }
 
     debts.forEach((d, index) => {
-      // 關鍵修正：給每個分帳項目一個獨立的 ID (時間戳 + 索引)
       onSave({ 
         id: Date.now() + index, 
         title: title, 
@@ -417,7 +437,7 @@ const App = () => {
   const [userId, setUserId] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
   const [date, setDate] = useState(new Date());
-  // 確保初始狀態完整，防止黑屏
+  // 關鍵修正：確保所有狀態都有初始值
   const [data, setData] = useState({ finance: [], diet: [], workout: [], coffee: [], memo: [], debts: [] });
   const [settings, setSettings] = useState({ name: 'User', dailyCalories: 2000, dailyWater: 2000, weeklyBudget: 5000 });
   const [modals, setModals] = useState({ expense: false, diet: false, workout: false, inbody: false, settings: false, coffee: false, menu: false, split: false });
@@ -478,12 +498,17 @@ const App = () => {
       api.post('update', 'Debts', { id, isPaid: true }, userId);
   };
 
+  // 修正後的一鍵收回邏輯
   const settlePerson = (name, ids) => {
       if(!confirm(`確認 ${name} 已還清所有款項？`)) return;
+      
+      // 只更新該用戶的 debts
       setData(prev => ({
           ...prev,
           debts: prev.debts.map(d => ids.includes(d.id) ? { ...d, isPaid: true } : d)
       }));
+      
+      // 後端更新
       ids.forEach(id => api.post('update', 'Debts', { id, isPaid: true }, userId));
   };
 
@@ -497,6 +522,16 @@ const App = () => {
     memo: (data.memo || []).filter(i => normalizeDate(i.date) === dateStr)
   };
 
+  // Calculate Budget
+  const isSameWeek = (dStr) => {
+      const d = new Date(dStr);
+      const now = new Date();
+      const day = now.getDay() || 7;
+      if(day!==1) now.setHours(-24*(day-1));
+      now.setHours(0,0,0,0);
+      return d >= now;
+  };
+  
   const weeklyFinanceTotal = (data.finance || []).filter(i => isSameWeek(i.date)).reduce((a,c) => a + (Number(c.amount)||0), 0);
   const remainingBudget = (settings.weeklyBudget || 5000) - weeklyFinanceTotal;
   const budgetProgress = Math.min((weeklyFinanceTotal / (settings.weeklyBudget || 5000)) * 100, 100);
@@ -536,215 +571,217 @@ const App = () => {
   );
 
   return (
-    <div className="flex flex-col h-[100dvh] w-screen bg-dark-bg overflow-hidden">
-      <div className="flex justify-between items-center px-6 pt-safe-top pb-2 mt-4">
-        <div><div className="text-xs font-bold text-accent-green uppercase tracking-wider mb-1">ONLINE</div><h1 className="text-2xl font-bold text-white">早安，{settings.name}</h1></div>
-        <div className="flex gap-2">
-            <button onClick={()=>toggle('menu',true)} className="p-2 bg-dark-card rounded-full border border-white/10 text-gray-400"><Icon name="ListTodo"/></button>
-            <button onClick={()=>toggle('settings',true)} className="p-2 bg-dark-card rounded-full border border-white/10 text-gray-400"><Icon name="Settings"/></button>
-        </div>
-      </div>
-
-      <DateScroller date={date} setDate={setDate} />
-      
-      <main className="px-6 pt-4 space-y-6 flex-1 overflow-y-auto pb-32">
-        {activeTab === 'home' && (
-          <>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-dark-card border border-white/10 p-4 rounded-2xl">
-                <div className="text-xs text-gray-500 font-bold mb-1">熱量攝取</div>
-                <div className="text-2xl font-bold text-white">{todayData.diet.reduce((a,c)=>a+(Number(c.calories)||0),0)} <span className="text-xs text-gray-500">/ {settings.dailyCalories}</span></div>
-                <div className="h-1 bg-white/5 mt-2 rounded-full overflow-hidden"><div className="h-full bg-accent-orange w-1/2"></div></div>
-              </div>
-              <div className="bg-dark-card border border-white/10 p-4 rounded-2xl relative overflow-hidden">
-                <div className="flex justify-between items-start mb-1">
-                    <div className="text-xs text-gray-500 font-bold">本週花費</div>
-                    <div className={`text-[10px] font-bold ${remainingBudget < 0 ? 'text-accent-red' : 'text-accent-green'}`}>餘 ${remainingBudget.toLocaleString()}</div>
-                </div>
-                <div className="text-2xl font-bold text-white">${weeklyFinanceTotal.toLocaleString()}</div>
-                <div className="h-1 bg-white/5 mt-2 rounded-full overflow-hidden">
-                    <div className={`h-full ${remainingBudget < 0 ? 'bg-accent-red' : 'bg-accent-green'}`} style={{width: `${budgetProgress}%`}}></div>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-white font-bold text-lg">今日行程</h3>
-              </div>
-              <div className="pb-8">
-                {timelineItems.length === 0 ? (
-                  <div className="text-center py-12 text-gray-600 border-2 border-dashed border-white/5 rounded-3xl">
-                    <Icon name="LayoutDashboard" size={40} className="mx-auto mb-2 opacity-20"/>
-                    <p>今天還沒有紀錄</p>
-                  </div>
-                ) : (
-                  timelineItems.map((item, i) => (
-                    <TimelineCard 
-                      key={i}
-                      icon={item.icon}
-                      color={item.color}
-                      title={item.name || item.title || item.note || item.bean}
-                      time={item.time || ''}
-                      subtitle={item.type}
-                      value={item.amount ? `-$${item.amount}` : item.calories ? `${item.calories} kcal` : item.method}
-                    />
-                  ))
-                )}
-              </div>
-            </div>
-          </>
-        )}
-
-        {activeTab === 'coffee' && (
-            <div className="space-y-4">
-                <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-white">咖啡日誌</h2><button onClick={()=>toggle('coffee',true)} className="text-yellow-500 font-bold">+ 新增</button></div>
-                {todayData.coffee.length===0 ? <div className="text-center text-gray-600 py-10">無紀錄</div> : todayData.coffee.map((i,k)=>(
-                    <div key={k} className="bg-dark-card border border-white/10 p-4 rounded-2xl shadow-sm">
-                        <div className="flex justify-between mb-2">
-                            <span className="font-bold text-white">{i.bean}</span>
-                            <span className="text-xs bg-yellow-900/30 text-yellow-500 px-2 py-1 rounded">{i.method}</span>
-                        </div>
-                        {i.method === 'hand' && (
-                            <div className="grid grid-cols-4 gap-2 text-xs text-gray-400 mb-2">
-                                <div><Icon name="Droplet" size={12}/> {i.ratio}</div>
-                                <div><Icon name="Thermometer" size={12}/> {i.temp}</div>
-                                <div><Icon name="Clock" size={12}/> {i.time}</div>
-                                <div><Icon name="Coffee" size={12}/> {i.water}</div>
-                            </div>
-                        )}
-                        <p className="text-sm text-gray-500 italic">"{i.taste}"</p>
-                    </div>
-                ))}
-            </div>
-        )}
-
-        {activeTab === 'split' && (
-            <div className="space-y-6">
-                <div className="bg-dark-card border border-white/10 p-6 rounded-2xl text-center">
-                    <div className="text-xs text-gray-500 font-bold mb-1">待收回總額</div>
-                    <div className="text-4xl font-bold text-white">${totalOwedToMe.toLocaleString()}</div>
-                </div>
-                
-                {Object.keys(debtsByPerson).length > 0 && (
-                    <div className="grid grid-cols-2 gap-3">
-                        {Object.entries(debtsByPerson).map(([name, info]) => (
-                            <div key={name} className="bg-dark-card border border-white/10 p-4 rounded-2xl flex flex-col justify-between">
-                                <div>
-                                    <div className="text-sm text-gray-400 mb-1">欠款人</div>
-                                    <div className="text-xl font-bold text-white mb-1">{name}</div>
-                                    <div className="text-2xl font-bold text-accent-blue">${info.total}</div>
-                                </div>
-                                <button 
-                                    onClick={() => settlePerson(name, info.ids)}
-                                    className="mt-3 w-full py-2 bg-white/10 hover:bg-accent-green hover:text-white text-gray-300 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1"
-                                >
-                                    <Icon name="UserCheck" size={14}/> 全數收回
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                )}
-
-                <div className="flex justify-between items-center mt-2"><h2 className="text-xl font-bold text-white">欠款明細</h2><button onClick={()=>toggle('split',true)} className="text-accent-blue font-bold">+ 新增</button></div>
-                
-                <div className="space-y-2">
-                    {unpaidDebts.length === 0 ? <div className="text-center text-gray-600 py-10">無人欠款</div> : 
-                     unpaidDebts.map((d, i) => (
-                        <div key={i} className="bg-dark-card border border-white/10 p-4 rounded-2xl flex justify-between items-center">
-                            <div>
-                                <div className="font-bold text-white text-lg">{d.debtor}</div>
-                                <div className="text-xs text-gray-500">{d.title} • {d.date}</div>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <span className="text-xl font-bold text-accent-blue">${d.amountOwed}</span>
-                                <button onClick={()=>toggleDebtPaid(d.id)} className="p-2 bg-white/10 rounded-full text-accent-green hover:bg-accent-green hover:text-white transition"><Icon name="CheckCircle" size={20}/></button>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        )}
-        
-        {activeTab === 'finance' && (
-          <div className="space-y-4">
-            <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-white">財務紀錄</h2><button onClick={()=>toggle('expense',true)} className="text-accent-green font-bold">+ 新增</button></div>
-            {todayData.finance.length===0 ? <div className="text-center text-gray-600 py-10">無紀錄</div> : todayData.finance.map((i,k)=><TimelineCard key={k} icon="Wallet" color="bg-accent-green" title={i.note} time={i.time} subtitle="支出" value={`$${i.amount}`} />)}
+    <ErrorBoundary>
+      <div className="flex flex-col h-[100dvh] w-screen bg-dark-bg overflow-hidden">
+        <div className="flex justify-between items-center px-6 pt-safe-top pb-2 mt-4">
+          <div><div className="text-xs font-bold text-accent-green uppercase tracking-wider mb-1">ONLINE</div><h1 className="text-2xl font-bold text-white">早安，{settings.name}</h1></div>
+          <div className="flex gap-2">
+              <button onClick={()=>toggle('menu',true)} className="p-2 bg-dark-card rounded-full border border-white/10 text-gray-400"><Icon name="ListTodo"/></button>
+              <button onClick={()=>toggle('settings',true)} className="p-2 bg-dark-card rounded-full border border-white/10 text-gray-400"><Icon name="Settings"/></button>
           </div>
-        )}
-      </main>
-
-      {/* Bottom Nav */}
-      <div className="fixed bottom-0 left-0 right-0 glass pb-safe-bottom pt-2 px-2 flex justify-around items-end z-40 w-full">
-        <button onClick={()=>setActiveTab('home')} className={`flex flex-col items-center p-2 w-1/5 ${activeTab==='home'?'text-white':'text-gray-500'}`}><Icon name="LayoutDashboard" size={24} strokeWidth={activeTab==='home'?2.5:2}/><span className="text-[10px] mt-1">首頁</span></button>
-        <button onClick={()=>setActiveTab('coffee')} className={`flex flex-col items-center p-2 w-1/5 ${activeTab==='coffee'?'text-white':'text-gray-500'}`}><Icon name="Coffee" size={24} strokeWidth={activeTab==='coffee'?2.5:2}/><span className="text-[10px] mt-1">咖啡</span></button>
-        
-        <div className="relative -top-5 w-1/5 flex justify-center">
-            <button onClick={()=>toggle('menu',true)} className="w-14 h-14 bg-white rounded-full flex items-center justify-center text-black shadow-lg shadow-white/20 active:scale-90 transition-transform">
-                <Icon name="Plus" size={28} />
-            </button>
         </div>
 
-        <button onClick={()=>setActiveTab('split')} className={`flex flex-col items-center p-2 w-1/5 ${activeTab==='split'?'text-white':'text-gray-500'}`}><Icon name="Users" size={24} strokeWidth={activeTab==='split'?2.5:2}/><span className="text-[10px] mt-1">分帳</span></button>
-        <button onClick={()=>setActiveTab('finance')} className={`flex flex-col items-center p-2 w-1/5 ${activeTab==='finance'?'text-white':'text-gray-500'}`}><Icon name="Wallet" size={24} strokeWidth={activeTab==='finance'?2.5:2}/><span className="text-[10px] mt-1">財務</span></button>
-      </div>
-
-      {/* Action Menu Modal */}
-      <AnimatePresence>
-        {modals.menu && (
+        <DateScroller date={date} setDate={setDate} />
+        
+        <main className="px-6 pt-4 space-y-6 flex-1 overflow-y-auto pb-32">
+          {activeTab === 'home' && (
             <>
-                <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={()=>toggle('menu',false)} className="fixed inset-0 bg-black/80 z-50 backdrop-blur-sm"/>
-                <motion.div initial={{scale:0.8, opacity:0}} animate={{scale:1, opacity:1}} exit={{scale:0.8, opacity:0}} className="fixed bottom-24 left-4 right-4 z-50">
-                    <div className="grid grid-cols-3 gap-4">
-                        <button onClick={()=>{toggle('menu',false); toggle('diet',true);}} className="flex flex-col items-center gap-2 p-4 bg-dark-card rounded-2xl border border-white/10 active:scale-95 transition"><div className="w-12 h-12 rounded-full bg-accent-orange flex items-center justify-center text-white"><Icon name="Utensils"/></div><span className="text-xs font-bold text-white">記飲食</span></button>
-                        <button onClick={()=>{toggle('menu',false); toggle('workout',true);}} className="flex flex-col items-center gap-2 p-4 bg-dark-card rounded-2xl border border-white/10 active:scale-95 transition"><div className="w-12 h-12 rounded-full bg-accent-blue flex items-center justify-center text-white"><Icon name="Dumbbell"/></div><span className="text-xs font-bold text-white">記運動</span></button>
-                        <button onClick={()=>{toggle('menu',false); toggle('expense',true);}} className="flex flex-col items-center gap-2 p-4 bg-dark-card rounded-2xl border border-white/10 active:scale-95 transition"><div className="w-12 h-12 rounded-full bg-accent-green flex items-center justify-center text-white"><Icon name="Wallet"/></div><span className="text-xs font-bold text-white">記一筆</span></button>
-                        <button onClick={()=>{toggle('menu',false); toggle('coffee',true);}} className="flex flex-col items-center gap-2 p-4 bg-dark-card rounded-2xl border border-white/10 active:scale-95 transition"><div className="w-12 h-12 rounded-full bg-yellow-600 flex items-center justify-center text-white"><Icon name="Coffee"/></div><span className="text-xs font-bold text-white">記咖啡</span></button>
-                        <button onClick={()=>{toggle('menu',false); toggle('split',true);}} className="flex flex-col items-center gap-2 p-4 bg-dark-card rounded-2xl border border-white/10 active:scale-95 transition"><div className="w-12 h-12 rounded-full bg-blue-400 flex items-center justify-center text-white"><Icon name="Users"/></div><span className="text-xs font-bold text-white">記分帳</span></button>
-                        <button onClick={()=>{toggle('menu',false); toggle('inbody',true);}} className="flex flex-col items-center gap-2 p-4 bg-dark-card rounded-2xl border border-white/10 active:scale-95 transition"><div className="w-12 h-12 rounded-full bg-accent-purple flex items-center justify-center text-white"><Icon name="Activity"/></div><span className="text-xs font-bold text-white">InBody</span></button>
-                    </div>
-                </motion.div>
-            </>
-        )}
-        {modals.settings && (
-            <BottomSheet isOpen={modals.settings} onClose={()=>toggle('settings',false)} title="設定">
-                <div className="space-y-4">
-                    <div><label className="text-xs text-gray-500 font-bold ml-1">暱稱</label><input value={settings.name} onChange={e=>setSettings({...settings,name:e.target.value})} className="dark-input"/></div>
-                    <div><label className="text-xs text-gray-500 font-bold ml-1">每日熱量 (kcal)</label><input type="number" value={settings.dailyCalories} onChange={e=>setSettings({...settings,dailyCalories:e.target.value})} className="dark-input"/></div>
-                    <div><label className="text-xs text-gray-500 font-bold ml-1">每週預算 ($)</label><input type="number" value={settings.weeklyBudget} onChange={e=>setSettings({...settings,weeklyBudget:e.target.value})} className="dark-input"/></div>
-                    <button onClick={()=>{api.post('saveSettings',null,settings,userId); toggle('settings',false);}} className="w-full py-4 bg-white text-black rounded-2xl font-bold">儲存設定</button>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-dark-card border border-white/10 p-4 rounded-2xl">
+                  <div className="text-xs text-gray-500 font-bold mb-1">熱量攝取</div>
+                  <div className="text-2xl font-bold text-white">{todayData.diet.reduce((a,c)=>a+(Number(c.calories)||0),0)} <span className="text-xs text-gray-500">/ {settings.dailyCalories}</span></div>
+                  <div className="h-1 bg-white/5 mt-2 rounded-full overflow-hidden"><div className="h-full bg-accent-orange w-1/2"></div></div>
                 </div>
-                {/* Memo Section inside Settings/Menu for now, or just a list */}
-                <div className="mt-6 pt-6 border-t border-white/10">
-                    <h3 className="text-lg font-bold text-white mb-4">待辦事項 (Memo)</h3>
-                    <div className="flex gap-2 mb-4">
-                        <input id="new-memo" placeholder="新增待辦..." className="dark-input flex-1" onKeyDown={e=>{if(e.key==='Enter'){addMemo(e.target.value); e.target.value='';}}}/>
-                        <button onClick={()=>{const el=document.getElementById('new-memo'); if(el.value) {addMemo(el.value); el.value='';}}} className="bg-accent-purple p-3 rounded-xl text-white"><Icon name="Plus"/></button>
-                    </div>
-                    <div className="space-y-2">
-                        {todayData.memo.map((m) => (
-                            <div key={m.id} className="flex items-center gap-3 bg-white/5 p-3 rounded-xl">
-                                <button onClick={()=>toggleMemo(m.id, m.isDone === 'true' || m.isDone === true)}>
-                                    {String(m.isDone) === 'true' ? <Icon name="CheckSquare" className="text-accent-green"/> : <Icon name="Square" className="text-gray-500"/>}
-                                </button>
-                                <span className={`flex-1 ${String(m.isDone) === 'true' ? 'text-gray-600 line-through' : 'text-white'}`}>{m.content}</span>
-                                <button onClick={()=>deleteMemo(m.id)} className="text-accent-red opacity-50 hover:opacity-100"><Icon name="Trash2" size={18}/></button>
-                            </div>
-                        ))}
-                    </div>
+                <div className="bg-dark-card border border-white/10 p-4 rounded-2xl relative overflow-hidden">
+                  <div className="flex justify-between items-start mb-1">
+                      <div className="text-xs text-gray-500 font-bold">本週花費</div>
+                      <div className={`text-[10px] font-bold ${remainingBudget < 0 ? 'text-accent-red' : 'text-accent-green'}`}>餘 ${remainingBudget.toLocaleString()}</div>
+                  </div>
+                  <div className="text-2xl font-bold text-white">${weeklyFinanceTotal.toLocaleString()}</div>
+                  <div className="h-1 bg-white/5 mt-2 rounded-full overflow-hidden">
+                      <div className={`h-full ${remainingBudget < 0 ? 'bg-accent-red' : 'bg-accent-green'}`} style={{width: `${budgetProgress}%`}}></div>
+                  </div>
                 </div>
-            </BottomSheet>
-        )}
-      </AnimatePresence>
+              </div>
 
-      <ExpenseModal isOpen={modals.expense} onClose={()=>toggle('expense',false)} onSave={i=>addData('Finance',i)} date={date} />
-      <DietModal isOpen={modals.diet} onClose={()=>toggle('diet',false)} onSave={i=>addData('Diet',i)} date={date} />
-      <WorkoutModal isOpen={modals.workout} onClose={()=>toggle('workout',false)} onSave={i=>addData('Workout',i)} date={date} />
-      <InBodyModal isOpen={modals.inbody} onClose={()=>toggle('inbody',false)} onSaveProfile={s=>{setSettings(p=>({...p,...s})); api.post('saveSettings',null,s,userId);}} />
-      <CoffeeModal isOpen={modals.coffee} onClose={()=>toggle('coffee',false)} onSave={i=>addData('Coffee',i)} date={date} />
-      <SplitModal isOpen={modals.split} onClose={()=>toggle('split',false)} onSave={i=>addData('Debts',i)} date={date} />
-      
-    </div>
+              <div>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-white font-bold text-lg">今日行程</h3>
+                </div>
+                <div className="pb-8">
+                  {timelineItems.length === 0 ? (
+                    <div className="text-center py-12 text-gray-600 border-2 border-dashed border-white/5 rounded-3xl">
+                      <Icon name="LayoutDashboard" size={40} className="mx-auto mb-2 opacity-20"/>
+                      <p>今天還沒有紀錄</p>
+                    </div>
+                  ) : (
+                    timelineItems.map((item, i) => (
+                      <TimelineCard 
+                        key={i}
+                        icon={item.icon}
+                        color={item.color}
+                        title={item.name || item.title || item.note || item.bean}
+                        time={item.time || ''}
+                        subtitle={item.type}
+                        value={item.amount ? `-$${item.amount}` : item.calories ? `${item.calories} kcal` : item.method}
+                      />
+                    ))
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'coffee' && (
+              <div className="space-y-4">
+                  <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-white">咖啡日誌</h2><button onClick={()=>toggle('coffee',true)} className="text-yellow-500 font-bold">+ 新增</button></div>
+                  {todayData.coffee.length===0 ? <div className="text-center text-gray-600 py-10">無紀錄</div> : todayData.coffee.map((i,k)=>(
+                      <div key={k} className="bg-dark-card border border-white/10 p-4 rounded-2xl shadow-sm">
+                          <div className="flex justify-between mb-2">
+                              <span className="font-bold text-white">{i.bean}</span>
+                              <span className="text-xs bg-yellow-900/30 text-yellow-500 px-2 py-1 rounded">{i.method}</span>
+                          </div>
+                          {i.method === 'hand' && (
+                              <div className="grid grid-cols-4 gap-2 text-xs text-gray-400 mb-2">
+                                  <div><Icon name="Droplet" size={12}/> {i.ratio}</div>
+                                  <div><Icon name="Thermometer" size={12}/> {i.temp}</div>
+                                  <div><Icon name="Clock" size={12}/> {i.time}</div>
+                                  <div><Icon name="Coffee" size={12}/> {i.water}</div>
+                              </div>
+                          )}
+                          <p className="text-sm text-gray-500 italic">"{i.taste}"</p>
+                      </div>
+                  ))}
+              </div>
+          )}
+
+          {activeTab === 'split' && (
+              <div className="space-y-6">
+                  <div className="bg-dark-card border border-white/10 p-6 rounded-2xl text-center">
+                      <div className="text-xs text-gray-500 font-bold mb-1">待收回總額</div>
+                      <div className="text-4xl font-bold text-white">${totalOwedToMe.toLocaleString()}</div>
+                  </div>
+                  
+                  {Object.keys(debtsByPerson).length > 0 && (
+                      <div className="grid grid-cols-2 gap-3">
+                          {Object.entries(debtsByPerson).map(([name, info]) => (
+                              <div key={name} className="bg-dark-card border border-white/10 p-4 rounded-2xl flex flex-col justify-between">
+                                  <div>
+                                      <div className="text-sm text-gray-400 mb-1">欠款人</div>
+                                      <div className="text-xl font-bold text-white mb-1">{name}</div>
+                                      <div className="text-2xl font-bold text-accent-blue">${info.total}</div>
+                                  </div>
+                                  <button 
+                                      onClick={() => settlePerson(name, info.ids)}
+                                      className="mt-3 w-full py-2 bg-white/10 hover:bg-accent-green hover:text-white text-gray-300 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1"
+                                  >
+                                      <Icon name="UserCheck" size={14}/> 全數收回
+                                  </button>
+                              </div>
+                          ))}
+                      </div>
+                  )}
+
+                  <div className="flex justify-between items-center mt-2"><h2 className="text-xl font-bold text-white">欠款明細</h2><button onClick={()=>toggle('split',true)} className="text-accent-blue font-bold">+ 新增</button></div>
+                  
+                  <div className="space-y-2">
+                      {unpaidDebts.length === 0 ? <div className="text-center text-gray-600 py-10">無人欠款</div> : 
+                       unpaidDebts.map((d, i) => (
+                          <div key={i} className="bg-dark-card border border-white/10 p-4 rounded-2xl flex justify-between items-center">
+                              <div>
+                                  <div className="font-bold text-white text-lg">{d.debtor}</div>
+                                  <div className="text-xs text-gray-500">{d.title} • {d.date}</div>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                  <span className="text-xl font-bold text-accent-blue">${d.amountOwed}</span>
+                                  <button onClick={()=>toggleDebtPaid(d.id)} className="p-2 bg-white/10 rounded-full text-accent-green hover:bg-accent-green hover:text-white transition"><Icon name="CheckCircle" size={20}/></button>
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+          )}
+          
+          {activeTab === 'finance' && (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-white">財務紀錄</h2><button onClick={()=>toggle('expense',true)} className="text-accent-green font-bold">+ 新增</button></div>
+              {todayData.finance.length===0 ? <div className="text-center text-gray-600 py-10">無紀錄</div> : todayData.finance.map((i,k)=><TimelineCard key={k} icon="Wallet" color="bg-accent-green" title={i.note} time={i.time} subtitle="支出" value={`$${i.amount}`} />)}
+            </div>
+          )}
+        </main>
+
+        {/* Bottom Nav */}
+        <div className="fixed bottom-0 left-0 right-0 glass pb-safe-bottom pt-2 px-2 flex justify-around items-end z-40 w-full">
+          <button onClick={()=>setActiveTab('home')} className={`flex flex-col items-center p-2 w-1/5 ${activeTab==='home'?'text-white':'text-gray-500'}`}><Icon name="LayoutDashboard" size={24} strokeWidth={activeTab==='home'?2.5:2}/><span className="text-[10px] mt-1">首頁</span></button>
+          <button onClick={()=>setActiveTab('coffee')} className={`flex flex-col items-center p-2 w-1/5 ${activeTab==='coffee'?'text-white':'text-gray-500'}`}><Icon name="Coffee" size={24} strokeWidth={activeTab==='coffee'?2.5:2}/><span className="text-[10px] mt-1">咖啡</span></button>
+          
+          <div className="relative -top-5 w-1/5 flex justify-center">
+              <button onClick={()=>toggle('menu',true)} className="w-14 h-14 bg-white rounded-full flex items-center justify-center text-black shadow-lg shadow-white/20 active:scale-90 transition-transform">
+                  <Icon name="Plus" size={28} />
+              </button>
+          </div>
+
+          <button onClick={()=>setActiveTab('split')} className={`flex flex-col items-center p-2 w-1/5 ${activeTab==='split'?'text-white':'text-gray-500'}`}><Icon name="Users" size={24} strokeWidth={activeTab==='split'?2.5:2}/><span className="text-[10px] mt-1">分帳</span></button>
+          <button onClick={()=>setActiveTab('finance')} className={`flex flex-col items-center p-2 w-1/5 ${activeTab==='finance'?'text-white':'text-gray-500'}`}><Icon name="Wallet" size={24} strokeWidth={activeTab==='finance'?2.5:2}/><span className="text-[10px] mt-1">財務</span></button>
+        </div>
+
+        {/* Action Menu Modal */}
+        <AnimatePresence>
+          {modals.menu && (
+              <>
+                  <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={()=>toggle('menu',false)} className="fixed inset-0 bg-black/80 z-50 backdrop-blur-sm"/>
+                  <motion.div initial={{scale:0.8, opacity:0}} animate={{scale:1, opacity:1}} exit={{scale:0.8, opacity:0}} className="fixed bottom-24 left-4 right-4 z-50">
+                      <div className="grid grid-cols-3 gap-4">
+                          <button onClick={()=>{toggle('menu',false); toggle('diet',true);}} className="flex flex-col items-center gap-2 p-4 bg-dark-card rounded-2xl border border-white/10 active:scale-95 transition"><div className="w-12 h-12 rounded-full bg-accent-orange flex items-center justify-center text-white"><Icon name="Utensils"/></div><span className="text-xs font-bold text-white">記飲食</span></button>
+                          <button onClick={()=>{toggle('menu',false); toggle('workout',true);}} className="flex flex-col items-center gap-2 p-4 bg-dark-card rounded-2xl border border-white/10 active:scale-95 transition"><div className="w-12 h-12 rounded-full bg-accent-blue flex items-center justify-center text-white"><Icon name="Dumbbell"/></div><span className="text-xs font-bold text-white">記運動</span></button>
+                          <button onClick={()=>{toggle('menu',false); toggle('expense',true);}} className="flex flex-col items-center gap-2 p-4 bg-dark-card rounded-2xl border border-white/10 active:scale-95 transition"><div className="w-12 h-12 rounded-full bg-accent-green flex items-center justify-center text-white"><Icon name="Wallet"/></div><span className="text-xs font-bold text-white">記一筆</span></button>
+                          <button onClick={()=>{toggle('menu',false); toggle('coffee',true);}} className="flex flex-col items-center gap-2 p-4 bg-dark-card rounded-2xl border border-white/10 active:scale-95 transition"><div className="w-12 h-12 rounded-full bg-yellow-600 flex items-center justify-center text-white"><Icon name="Coffee"/></div><span className="text-xs font-bold text-white">記咖啡</span></button>
+                          <button onClick={()=>{toggle('menu',false); toggle('split',true);}} className="flex flex-col items-center gap-2 p-4 bg-dark-card rounded-2xl border border-white/10 active:scale-95 transition"><div className="w-12 h-12 rounded-full bg-blue-400 flex items-center justify-center text-white"><Icon name="Users"/></div><span className="text-xs font-bold text-white">記分帳</span></button>
+                          <button onClick={()=>{toggle('menu',false); toggle('inbody',true);}} className="flex flex-col items-center gap-2 p-4 bg-dark-card rounded-2xl border border-white/10 active:scale-95 transition"><div className="w-12 h-12 rounded-full bg-accent-purple flex items-center justify-center text-white"><Icon name="Activity"/></div><span className="text-xs font-bold text-white">InBody</span></button>
+                      </div>
+                  </motion.div>
+              </>
+          )}
+          {modals.settings && (
+              <BottomSheet isOpen={modals.settings} onClose={()=>toggle('settings',false)} title="設定">
+                  <div className="space-y-4">
+                      <div><label className="text-xs text-gray-500 font-bold ml-1">暱稱</label><input value={settings.name} onChange={e=>setSettings({...settings,name:e.target.value})} className="dark-input"/></div>
+                      <div><label className="text-xs text-gray-500 font-bold ml-1">每日熱量 (kcal)</label><input type="number" value={settings.dailyCalories} onChange={e=>setSettings({...settings,dailyCalories:e.target.value})} className="dark-input"/></div>
+                      <div><label className="text-xs text-gray-500 font-bold ml-1">每週預算 ($)</label><input type="number" value={settings.weeklyBudget} onChange={e=>setSettings({...settings,weeklyBudget:e.target.value})} className="dark-input"/></div>
+                      <button onClick={()=>{api.post('saveSettings',null,settings,userId); toggle('settings',false);}} className="w-full py-4 bg-white text-black rounded-2xl font-bold">儲存設定</button>
+                  </div>
+                  {/* Memo Section inside Settings/Menu for now, or just a list */}
+                  <div className="mt-6 pt-6 border-t border-white/10">
+                      <h3 className="text-lg font-bold text-white mb-4">待辦事項 (Memo)</h3>
+                      <div className="flex gap-2 mb-4">
+                          <input id="new-memo" placeholder="新增待辦..." className="dark-input flex-1" onKeyDown={e=>{if(e.key==='Enter'){addMemo(e.target.value); e.target.value='';}}}/>
+                          <button onClick={()=>{const el=document.getElementById('new-memo'); if(el.value) {addMemo(el.value); el.value='';}}} className="bg-accent-purple p-3 rounded-xl text-white"><Icon name="Plus"/></button>
+                      </div>
+                      <div className="space-y-2">
+                          {todayData.memo.map((m) => (
+                              <div key={m.id} className="flex items-center gap-3 bg-white/5 p-3 rounded-xl">
+                                  <button onClick={()=>toggleMemo(m.id, m.isDone === 'true' || m.isDone === true)}>
+                                      {String(m.isDone) === 'true' ? <Icon name="CheckSquare" className="text-accent-green"/> : <Icon name="Square" className="text-gray-500"/>}
+                                  </button>
+                                  <span className={`flex-1 ${String(m.isDone) === 'true' ? 'text-gray-600 line-through' : 'text-white'}`}>{m.content}</span>
+                                  <button onClick={()=>deleteMemo(m.id)} className="text-accent-red opacity-50 hover:opacity-100"><Icon name="Trash2" size={18}/></button>
+                              </div>
+                          ))}
+                      </div>
+                  </div>
+              </BottomSheet>
+          )}
+        </AnimatePresence>
+
+        <ExpenseModal isOpen={modals.expense} onClose={()=>toggle('expense',false)} onSave={i=>addData('Finance',i)} date={date} />
+        <DietModal isOpen={modals.diet} onClose={()=>toggle('diet',false)} onSave={i=>addData('Diet',i)} date={date} />
+        <WorkoutModal isOpen={modals.workout} onClose={()=>toggle('workout',false)} onSave={i=>addData('Workout',i)} date={date} />
+        <InBodyModal isOpen={modals.inbody} onClose={()=>toggle('inbody',false)} onSaveProfile={s=>{setSettings(p=>({...p,...s})); api.post('saveSettings',null,s,userId);}} />
+        <CoffeeModal isOpen={modals.coffee} onClose={()=>toggle('coffee',false)} onSave={i=>addData('Coffee',i)} date={date} />
+        <SplitModal isOpen={modals.split} onClose={()=>toggle('split',false)} onSave={i=>addData('Debts',i)} date={date} />
+        
+      </div>
+    </ErrorBoundary>
   );
 };
 
