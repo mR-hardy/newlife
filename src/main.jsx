@@ -14,7 +14,6 @@ import {
 // ==========================================
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzd7jbWacz3z8oM22VWCP_RgtuvgGF-eSTsG_ZC3FG_jRloxWXiDnsZeNK4I8RmaW9w/exec"; 
 
-
 // --- Debug Logger (日誌系統) ---
 let logToScreen = () => {}; // Placeholder
 
