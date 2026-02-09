@@ -12,17 +12,20 @@ import {
 // ==========================================
 // ⚠️ 設定區：請填入你的 Google Script URL
 // ==========================================
-const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzd7jbWacz3z8oM22VWCP_RgtuvgGF-eSTsG_ZC3FG_jRloxWXiDnsZeNK4I8RmaW9w/exec"; 
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/library/d/1j7-86yWn5faEvNCRug6Guigw9F79_wrq87id5qDGJGqHbZQLvYIRMzGP/3"; 
 
 
-// --- Helper: 安全的日期格式化 (避免時區問題) ---
-const formatDate = (dateObj) => {
-  if (!dateObj) return '';
-  // 使用本地時間字串，避免 UTC 轉換導致日期倒退
-  const y = dateObj.getFullYear();
-  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-  const d = String(dateObj.getDate()).padStart(2, '0');
-  return `${y}/${m}/${d}`;
+// --- Helper: 強力日期格式化 (關鍵修正！) ---
+// 無論後端傳來什麼怪格式，通通轉成 YYYY/MM/DD
+// 解決 iPhone 與 Google Sheet 日期格式不一致導致資料消失的問題
+const normalizeDate = (dateInput) => {
+  if (!dateInput) return "";
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return dateInput; // 如果轉失敗，回傳原值
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}/${m}/${day}`;
 };
 
 // --- API Service ---
@@ -34,11 +37,17 @@ const api = {
       const json = await response.json();
       
       if (json.status === 'success') {
-        // 簡單處理：直接回傳，不依賴前端複雜轉換，先求有資料
+        // 收到資料後，立刻清洗日期格式
+        const cleanData = (list) => Array.isArray(list) ? list.map(item => ({
+          ...item,
+          // 如果有日期，就清洗它，否則保留原樣
+          date: item.date ? normalizeDate(item.date) : normalizeDate(new Date())
+        })) : [];
+
         return {
-          diet: Array.isArray(json.data.diet) ? json.data.diet : [],
-          workout: Array.isArray(json.data.workout) ? json.data.workout : [],
-          finance: Array.isArray(json.data.finance) ? json.data.finance : [],
+          diet: cleanData(json.data.diet),
+          workout: cleanData(json.data.workout),
+          finance: cleanData(json.data.finance),
           settings: json.data.settings || {}
         };
       }
@@ -47,11 +56,11 @@ const api = {
   },
   post: async (action, sheet, data, userId) => {
     if (!GOOGLE_SCRIPT_URL.startsWith("http")) return;
-    // 寫入時存純字串，避免時區干擾
-    if (data.date instanceof Date) {
-        data.date = formatDate(data.date);
-    }
-    try { fetch(GOOGLE_SCRIPT_URL, { method: "POST", body: JSON.stringify({ action, sheet, data, userId }) }); } catch (e) {}
+    // 寫入前也確保格式正確
+    const payload = { ...data };
+    if (payload.date) payload.date = normalizeDate(payload.date);
+    
+    try { fetch(GOOGLE_SCRIPT_URL, { method: "POST", body: JSON.stringify({ action, sheet, data: payload, userId }) }); } catch (e) {}
   },
   analyze: async (base64Image, type) => {
     if (!GOOGLE_SCRIPT_URL.startsWith("http")) return null;
@@ -92,8 +101,9 @@ const DateScroller = ({ date, setDate }) => {
     <div className="pt-4 pb-2 px-4 bg-dark-bg z-10">
       <div className="flex gap-3 overflow-x-auto no-scrollbar py-2" style={{scrollbarWidth:'none'}}>
         {dates.map((d, i) => {
-          const isSelected = formatDate(d) === formatDate(date);
-          const isToday = formatDate(d) === formatDate(new Date());
+          // 使用 normalizeDate 進行比對，確保選中正確日期
+          const isSelected = normalizeDate(d) === normalizeDate(date);
+          const isToday = normalizeDate(d) === normalizeDate(new Date());
           return (
             <button 
               key={i} 
@@ -192,7 +202,7 @@ const ExpenseModal = ({ isOpen, onClose, onSave, date }) => {
         {[1,2,3,4,5,6,7,8,9,'.',0].map(n=><button key={n} onClick={()=>num(n)} className="py-4 bg-dark-bg rounded-2xl text-xl font-bold text-white active:bg-dark-border transition">{n}</button>)}
         <button onClick={()=>setAmt(amt.slice(0,-1))} className="py-4 bg-accent-red/20 text-accent-red rounded-2xl flex justify-center items-center active:bg-accent-red/30"><Trash2/></button>
       </div>
-      <button onClick={()=>{if(amt) onSave({amount:parseInt(amt),note:note||categories.find(c=>c.id===cat).label,categoryId:cat,date:formatDate(date), time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-white text-black rounded-2xl font-bold text-lg active:scale-95 transition">確認</button>
+      <button onClick={()=>{if(amt) onSave({amount:parseInt(amt),note:note||categories.find(c=>c.id===cat).label,categoryId:cat,date:date, time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-white text-black rounded-2xl font-bold text-lg active:scale-95 transition">確認</button>
     </BottomSheet>
   );
 };
@@ -235,7 +245,7 @@ const DietModal = ({ isOpen, onClose, onSave, date }) => {
                 <input type="number" placeholder="熱量 (kcal)" value={data.calories} onChange={e=>setData({...data,calories:e.target.value})} className="dark-input"/>
                 <input type="number" placeholder="蛋白質 (g)" value={data.protein} onChange={e=>setData({...data,protein:e.target.value})} className="dark-input"/>
               </div>
-              <button onClick={()=>{onSave({...data, date:formatDate(date), time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-accent-orange text-white rounded-2xl font-bold mt-2">儲存</button>
+              <button onClick={()=>{onSave({...data, date:date, time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-accent-orange text-white rounded-2xl font-bold mt-2">儲存</button>
             </div>
           )}
         </div>
@@ -246,7 +256,7 @@ const DietModal = ({ isOpen, onClose, onSave, date }) => {
             <div className="flex-1 bg-dark-bg p-3 rounded-2xl text-center"><div className="text-xs text-dark-sub font-bold">熱量</div><div className="text-xl font-bold text-accent-orange">{data.calories}</div></div>
             <div className="flex-1 bg-dark-bg p-3 rounded-2xl text-center"><div className="text-xs text-dark-sub font-bold">蛋白質</div><div className="text-xl font-bold text-accent-blue">{data.protein}g</div></div>
           </div>
-          <button onClick={()=>{onSave({...data, date:formatDate(date), time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-white text-black rounded-2xl font-bold">確認儲存</button>
+          <button onClick={()=>{onSave({...data, date:date, time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-white text-black rounded-2xl font-bold">確認儲存</button>
         </div>
       )}
     </BottomSheet>
@@ -264,7 +274,7 @@ const WorkoutModal = ({ isOpen, onClose, onSave, date }) => {
           <input type="number" placeholder="時長 (分)" value={data.duration} onChange={e=>setData({...data,duration:Number(e.target.value)})} className="dark-input"/>
           <input type="number" placeholder="消耗 (kcal)" value={data.calories} onChange={e=>setData({...data,calories:Number(e.target.value)})} className="dark-input"/>
         </div>
-        <button onClick={()=>{onSave({...data, date:formatDate(date), time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-accent-blue text-white rounded-2xl font-bold mt-4">儲存紀錄</button>
+        <button onClick={()=>{onSave({...data, date:date, time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}); onClose();}} className="w-full py-4 bg-accent-blue text-white rounded-2xl font-bold mt-4">儲存紀錄</button>
       </div>
     </BottomSheet>
   );
@@ -318,6 +328,7 @@ const App = () => {
   const [modals, setModals] = useState({ expense: false, diet: false, workout: false, inbody: false, settings: false });
   const toggle = (k, v) => setModals(p => ({...p, [k]: v}));
 
+  // 登入邏輯：加入 Loading 狀態，確保資料抓完才顯示主畫面
   const handleLogin = async (id) => {
     setLoading(true);
     const res = await api.fetchAll(id);
@@ -340,12 +351,13 @@ const App = () => {
     api.post('add', type, item, userId);
   };
 
-  // ⚠️ 關鍵修正：這裡移除了日期過濾，改為顯示所有資料，以驗證數據是否正確載入
-  // 如果你看到資料了，代表是日期格式問題。如果還是沒看到，代表 API 沒回傳。
+  // 統一使用 YYYY/MM/DD 進行篩選
+  const dateStr = normalizeDate(date);
+  
   const todayData = {
-    finance: data.finance, // 顯示全部
-    diet: data.diet,       // 顯示全部
-    workout: data.workout  // 顯示全部
+    finance: data.finance.filter(i => normalizeDate(i.date) === dateStr),
+    diet: data.diet.filter(i => normalizeDate(i.date) === dateStr),
+    workout: data.workout.filter(i => normalizeDate(i.date) === dateStr)
   };
 
   const timelineItems = [
@@ -384,12 +396,12 @@ const App = () => {
           <>
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-dark-card border border-dark-border p-4 rounded-2xl">
-                <div className="text-xs text-dark-sub font-bold mb-1">總攝取 (全部)</div>
+                <div className="text-xs text-dark-sub font-bold mb-1">熱量攝取</div>
                 <div className="text-2xl font-bold text-white">{todayData.diet.reduce((a,c)=>a+(Number(c.calories)||0),0)} <span className="text-xs text-dark-sub">/ {settings.dailyCalories}</span></div>
                 <div className="h-1 bg-dark-bg mt-2 rounded-full overflow-hidden"><div className="h-full bg-accent-orange w-1/2"></div></div>
               </div>
               <div className="bg-dark-card border border-dark-border p-4 rounded-2xl">
-                <div className="text-xs text-dark-sub font-bold mb-1">總花費 (全部)</div>
+                <div className="text-xs text-dark-sub font-bold mb-1">今日花費</div>
                 <div className="text-2xl font-bold text-white">${todayData.finance.reduce((a,c)=>a+(Number(c.amount)||0),0)}</div>
                 <div className="h-1 bg-dark-bg mt-2 rounded-full overflow-hidden"><div className="h-full bg-accent-green w-1/3"></div></div>
               </div>
@@ -399,7 +411,7 @@ const App = () => {
               <div className="text-xs text-dark-sub font-bold mb-4 uppercase tracking-wider">本週熱量趨勢</div>
               <div className="h-32 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={[...Array(7)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-6+i);const s=formatDate(d);return{name:i,v:data.diet.filter(x=>formatDate(new Date(x.date))===s).reduce((a,c)=>a+(Number(c.calories)||0),0)}})}>
+                  <AreaChart data={[...Array(7)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-6+i);const s=normalizeDate(d);return{name:i,v:data.diet.filter(x=>normalizeDate(x.date)===s).reduce((a,c)=>a+(Number(c.calories)||0),0)}})}>
                     <Area type="monotone" dataKey="v" stroke="#F59E0B" fill="#F59E0B" fillOpacity={0.1} strokeWidth={2}/>
                   </AreaChart>
                 </ResponsiveContainer>
@@ -408,7 +420,7 @@ const App = () => {
 
             <div>
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-white font-bold text-lg">歷史行程 (除錯模式)</h3>
+                <h3 className="text-white font-bold text-lg">今日行程</h3>
                 <div className="flex gap-2">
                   <button onClick={()=>toggle('diet',true)} className="p-2 bg-accent-orange/20 text-accent-orange rounded-xl"><Utensils size={18}/></button>
                   <button onClick={()=>toggle('workout',true)} className="p-2 bg-accent-blue/20 text-accent-blue rounded-xl"><Dumbbell size={18}/></button>
@@ -420,8 +432,7 @@ const App = () => {
                 {timelineItems.length === 0 ? (
                   <div className="text-center py-12 text-dark-sub border-2 border-dashed border-dark-card rounded-3xl">
                     <LayoutDashboard size={40} className="mx-auto mb-2 opacity-20"/>
-                    <p>沒有任何紀錄</p>
-                    <p className="text-xs mt-2">請確認 Google Sheet 是否有資料</p>
+                    <p>今天還沒有紀錄</p>
                   </div>
                 ) : (
                   timelineItems.map((item, i) => (
@@ -430,7 +441,7 @@ const App = () => {
                       icon={item.icon}
                       color={item.color}
                       title={item.name || item.title || item.note}
-                      time={`${item.date} ${item.time || ''}`} // 顯示日期以便除錯
+                      time={item.time || ''}
                       subtitle={item.type === 'finance' ? '支出' : item.type === 'diet' ? '攝取' : '消耗'}
                       value={item.amount ? `-$${item.amount}` : item.calories ? `${item.calories} kcal` : ''}
                     />
@@ -449,7 +460,7 @@ const App = () => {
         {activeTab === 'diet' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-white">飲食紀錄</h2><button onClick={()=>toggle('diet',true)} className="text-accent-orange font-bold">+ 新增</button></div>
-            {todayData.diet.length===0 ? <div className="text-center text-dark-sub py-10">無紀錄</div> : todayData.diet.map((i,k)=><TimelineCard key={k} icon="Utensils" color="bg-accent-orange" title={i.name} time={i.date} subtitle="攝取" value={`${i.calories} kcal`} />)}
+            {todayData.diet.length===0 ? <div className="text-center text-dark-sub py-10">無紀錄</div> : todayData.diet.map((i,k)=><TimelineCard key={k} icon="Utensils" color="bg-accent-orange" title={i.name} time={i.time} subtitle="攝取" value={`${i.calories} kcal`} />)}
           </div>
         )}
         
@@ -459,14 +470,14 @@ const App = () => {
             <div onClick={()=>toggle('inbody',true)} className="bg-gradient-to-r from-accent-purple to-indigo-600 p-5 rounded-3xl text-white flex justify-between items-center shadow-lg shadow-accent-purple/20 active:scale-95 transition cursor-pointer mb-4">
               <div><div className="font-bold text-lg">InBody 分析</div><div className="text-xs opacity-80">點擊上傳報告</div></div><Activity size={32} className="opacity-80"/>
             </div>
-            {todayData.workout.length===0 ? <div className="text-center text-dark-sub py-10">無紀錄</div> : todayData.workout.map((i,k)=><TimelineCard key={k} icon="Dumbbell" color="bg-accent-blue" title={i.title} time={i.date} subtitle="消耗" value={`${i.calories} kcal`} />)}
+            {todayData.workout.length===0 ? <div className="text-center text-dark-sub py-10">無紀錄</div> : todayData.workout.map((i,k)=><TimelineCard key={k} icon="Dumbbell" color="bg-accent-blue" title={i.title} time={i.time} subtitle="消耗" value={`${i.calories} kcal`} />)}
           </div>
         )}
         
         {activeTab === 'finance' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-white">財務紀錄</h2><button onClick={()=>toggle('expense',true)} className="text-accent-green font-bold">+ 新增</button></div>
-            {todayData.finance.length===0 ? <div className="text-center text-dark-sub py-10">無紀錄</div> : todayData.finance.map((i,k)=><TimelineCard key={k} icon="Wallet" color="bg-accent-green" title={i.note} time={i.date} subtitle="支出" value={`$${i.amount}`} />)}
+            {todayData.finance.length===0 ? <div className="text-center text-dark-sub py-10">無紀錄</div> : todayData.finance.map((i,k)=><TimelineCard key={k} icon="Wallet" color="bg-accent-green" title={i.note} time={i.time} subtitle="支出" value={`$${i.amount}`} />)}
           </div>
         )}
       </main>
@@ -492,6 +503,13 @@ const App = () => {
           <button onClick={()=>{api.post('saveSettings',null,settings,userId); toggle('settings',false);}} className="w-full py-4 bg-white text-black rounded-2xl font-bold">儲存設定</button>
         </div>
       </BottomSheet>
+      
+      {/* 數據除錯指示器 (確認是否真的有抓到資料) */}
+      {settings.name !== 'User' && (
+        <div className="fixed top-0 left-0 bg-accent-green text-black text-[10px] px-2 py-1 z-50 rounded-br-lg opacity-50">
+          D:{data.diet.length} W:{data.workout.length} F:{data.finance.length}
+        </div>
+      )}
     </div>
   );
 };
